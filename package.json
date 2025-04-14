@@ -1,0 +1,74 @@
+{
+  "name": "@oukek/unified-ai",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "unified-ai",
+  "author": "Oukek",
+  "license": "ISC",
+  "homepage": "https://github.com/oukek/unified-ai#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oukek/unified-ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oukek/unified-ai/issues"
+  },
+  "keywords": [
+    "sdk",
+    "oukek",
+    "api",
+    "unified-ai",
+    "ai"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.esm.js",
+      "require": "./dist/models/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "prepublishOnly": "npm run build",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "dotenv": "^16.5.0",
+    "jsonrepair": "^3.12.0"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^4.12.0",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "eslint": "^9.24.0",
+    "jest": "^29.5.0",
+    "rollup": "^4.39.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "rollup-plugin-dts": "^6.2.1",
+    "ts-jest": "^29.1.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.0.0"
+  }
+}
