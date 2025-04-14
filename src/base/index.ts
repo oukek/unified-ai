@@ -1,7 +1,5 @@
 import type { ChatOptions, ResponseTypeForOptions, StreamChunkTypeForOptions } from '../types'
 
-import { jsonrepair } from 'jsonrepair'
-
 /**
  * BaseModel 抽象类
  * 定义AI模型实现的接口
@@ -34,18 +32,4 @@ export abstract class BaseModel {
    * @returns 模型实例或标识符
    */
   abstract getModel(): string
-
-  /**
-   * 修复损坏的JSON字符串
-   * @param jsonString 需要修复的JSON字符串
-   * @returns 修复后的JSON字符串
-   */
-  repairJson(jsonString: string): string {
-    try {
-      return jsonrepair(jsonString)
-    }
-    catch (error: any) {
-      throw new Error(`JSON修复失败: ${error.message}`)
-    }
-  }
 }

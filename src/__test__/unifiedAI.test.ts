@@ -1,4 +1,4 @@
-import type { AgentCallback, AgentFunction } from '../models/unified'
+import type { AgentCallback, AgentFunction } from '../types'
 import { GeminiModel } from '../models/gemini'
 
 import { UnifiedAI } from '../models/unified'
@@ -113,7 +113,7 @@ describe('unifiedAI tests', () => {
         },
         required: ['city'],
       },
-      executor: async (params) => {
+      executor: async (params: any) => {
         const { city } = params
         const citys: Record<string, any> = {
           北京: { population: '2100万', area: '16410平方公里', country: '中国', founded: '公元前1045年' },
