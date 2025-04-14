@@ -22,6 +22,7 @@ import {
   ChatRole,
   ResponseFormat,
 } from '../types'
+import { JsonHelper } from '../utils'
 
 /**
  * Gemini API 参数接口
@@ -113,7 +114,7 @@ export class GeminiModel extends BaseModel {
       catch {
         // JSON解析失败，尝试修复
         try {
-          const repairedJson = this.repairJson(rawText)
+          const repairedJson = JsonHelper.repairJson(rawText)
           content = JSON.parse(repairedJson)
         }
         catch (e: any) {
@@ -368,7 +369,7 @@ export class GeminiModel extends BaseModel {
         catch {
           // JSON解析失败，尝试修复
           try {
-            const repairedJson = this.repairJson(jsonBuffer)
+            const repairedJson = JsonHelper.repairJson(jsonBuffer)
             finalContent = JSON.parse(repairedJson)
             isJsonResponse = true
           }

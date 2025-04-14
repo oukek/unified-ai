@@ -30,6 +30,11 @@
       "types": "./dist/models/index.d.ts",
       "import": "./dist/models/index.esm.js",
       "require": "./dist/models/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.esm.js",
+      "require": "./dist/utils/index.js"
     }
   },
   "main": "dist/index.js",
