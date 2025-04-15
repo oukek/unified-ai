@@ -193,16 +193,6 @@ export class CustomModel extends BaseModel {
         geminiOptions.maxOutputTokens = options.maxTokens
       }
 
-      // 如果是JSON模式，添加系统指令提示
-      if (options?.responseFormat === ResponseFormat.JSON) {
-        // 在用户输入前添加指令，确保模型以JSON格式返回
-        const jsonInstruction = {
-          role: 'user',
-          parts: [{ text: 'Please return your response in valid JSON format only, without any non-JSON text.' }] as Part[],
-        }
-        geminiInput.unshift(jsonInstruction)
-      }
-
       // 调用 Gemini API
       const response = await this.ai.models.generateContent({
         model: this.modelName,
@@ -259,23 +249,6 @@ export class CustomModel extends BaseModel {
       }
       if (options?.maxTokens !== undefined) {
         geminiOptions.maxOutputTokens = options.maxTokens
-      }
-
-      // 如果是JSON模式，添加系统指令提示
-      if (options?.responseFormat === ResponseFormat.JSON) {
-        // 在用户输入前添加指令，确保模型以JSON格式返回
-        const jsonInstruction = {
-          role: 'user',
-          parts: [{ text: 'Please return your response in valid JSON format only, without any non-JSON text.' }] as Part[],
-        }
-        geminiInput.unshift(jsonInstruction)
-      }
-
-      // 处理工具参数
-      // let tools: GeminiTool[] | undefined
-      if (options?.tools && Array.isArray(options.tools)) {
-        // tools = this.convertToolsFormat(options.tools)
-        // console.log('tools', tools)
       }
 
       // 调用 Gemini 流式 API

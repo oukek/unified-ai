@@ -7,14 +7,6 @@ import { JsonHelper } from './json-helper'
  */
 export class FunctionCallParser {
   /**
-   * 支持的函数调用属性名
-   */
-  private static readonly supportedFunctionCallKeys = [
-    'function_call',
-    'next_function_call',
-  ]
-
-  /**
    * 解析AI响应中的函数调用
    * @param content AI响应内容，可以是字符串或对象
    * @returns 解析出的函数调用列表
@@ -36,14 +28,14 @@ export class FunctionCallParser {
         this.extractBatchFunctionCalls(jsonObj.function_calls, functionCalls)
       }
 
-      // 如果没有批量调用，检查单个函数调用
-      if (functionCalls.length === 0) {
-        this.extractSingleFunctionCalls(jsonObj, functionCalls)
-      }
-
       // 如果顶层没有函数调用，但有嵌套对象，递归搜索
       if (functionCalls.length === 0 && typeof jsonObj === 'object' && jsonObj !== null && !Array.isArray(jsonObj)) {
         this.extractNestedFunctionCalls(jsonObj, functionCalls)
+      }
+
+      if (functionCalls.length === 0) {
+        // 尝试使用正则表达式匹配代码块
+        this.extractFunctionCallsFromCodeBlocks(contentStr, functionCalls)
       }
     }
     catch (e: any) {
@@ -77,23 +69,6 @@ export class FunctionCallParser {
   }
 
   /**
-   * 提取单个函数调用
-   * @param obj 可能包含函数调用的对象
-   * @param functionCalls 存储提取结果的数组
-   */
-  private static extractSingleFunctionCalls(obj: any, functionCalls: FunctionCall[]): void {
-    for (const key of this.supportedFunctionCallKeys) {
-      if (obj[key] && typeof obj[key] === 'object' && obj[key].name) {
-        const call = obj[key]
-        functionCalls.push({
-          name: call.name,
-          arguments: typeof call.arguments === 'string' ? JsonHelper.safeParseJson(call.arguments) : call.arguments,
-        })
-      }
-    }
-  }
-
-  /**
    * 从嵌套对象中提取函数调用
    * @param obj 嵌套对象
    * @param functionCalls 存储提取结果的数组
@@ -106,11 +81,6 @@ export class FunctionCallParser {
         if (value.function_calls && Array.isArray(value.function_calls)) {
           this.extractBatchFunctionCalls(value.function_calls, functionCalls)
         }
-
-        // 检查嵌套对象是否包含单个函数调用
-        if (functionCalls.length === 0) {
-          this.extractSingleFunctionCalls(value, functionCalls)
-        }
       }
     }
   }
@@ -121,7 +91,7 @@ export class FunctionCallParser {
    * @param functionCalls 存储提取结果的数组
    */
   private static extractFunctionCallsFromCodeBlocks(content: string, functionCalls: FunctionCall[]): void {
-    const jsonBlockRegex = /```(?:json)?([\s\S]*?)```/g
+    const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/g
     const jsonMatches = content.matchAll(jsonBlockRegex)
 
     for (const match of jsonMatches) {
@@ -132,11 +102,6 @@ export class FunctionCallParser {
         // 检查JSON代码块中是否有批量函数调用
         if (jsonObj.function_calls && Array.isArray(jsonObj.function_calls)) {
           this.extractBatchFunctionCalls(jsonObj.function_calls, functionCalls)
-        }
-
-        // 如果没有批量调用，检查单个函数调用
-        if (functionCalls.length === 0) {
-          this.extractSingleFunctionCalls(jsonObj, functionCalls)
         }
 
         // 如果顶层没有函数调用，但有嵌套对象，递归检查一层

@@ -10,6 +10,7 @@ import { ResponseFormat } from '../types'
 import { FunctionCallExecutor } from './function-call-executor'
 import { FunctionCallParser } from './function-call-parser'
 import { JsonHelper } from './json-helper'
+import { ModelHelpers } from './model-helpers'
 
 /**
  * 函数调用处理器配置选项
@@ -125,7 +126,7 @@ export class FunctionCallProcessor {
       : initialResponse.content as string
 
     // 构建新的提示，包含原始响应和函数执行结果
-    const followupPrompt = `
+    let followupPrompt = `
 My previous question was: ${initialResponse.additionalInfo?.userPrompt || ''}
 
 Your response was:
@@ -137,6 +138,10 @@ ${resultsSummary}
 Please generate a final response that incorporates all this information. If you need to call additional functions, please clearly indicate this.
 ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in valid JSON format.' : ''}
 `
+// 如果模型不支持工具，使用提示增强
+    if (!baseModel.supportsTools(baseModel.getModel(options?.model)) && functions.length > 0) {
+      followupPrompt = ModelHelpers.enhanceContentWithTools(followupPrompt, functions)
+    }
 
     // 如果已达到最大递归深度但还有函数调用，则生成带有结果的最终回复
     if (depth >= this.maxRecursionDepth - 1 && functionCalls.length > 0) {
@@ -181,7 +186,7 @@ ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in v
       depth + 1,
       callback,
       options,
-
+      mcpClient
     )
 
     // 合并函数调用链

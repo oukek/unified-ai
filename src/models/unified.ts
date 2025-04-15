@@ -1,5 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import type { z } from 'zod'
+import { z } from 'zod'
 import type {
   AgentCallback,
   AgentFunction,
@@ -93,10 +93,15 @@ export class UnifiedAI extends BaseModel {
   async getAllTools(): Promise<AgentFunctionSchema[]> {
     const tools = [...this.functions, ...(await this.getMcpTools())]
     return tools.map((tool) => {
-      const parameters = zodToJsonSchema(tool.parameters, {
-        strictUnions: true,
-      })
-      delete parameters.$schema
+      let parameters: Record<string, any> = {}
+      if (tool.parameters instanceof z.ZodObject) {
+        parameters = zodToJsonSchema(tool.parameters, {
+          strictUnions: true,
+        })
+      } else {
+        parameters = tool.parameters
+      }
+      delete (parameters as any).$schema
       delete (parameters as any).additionalProperties
       return {
         name: tool.name,
@@ -108,7 +113,7 @@ export class UnifiedAI extends BaseModel {
   }
 
   getModel(model?: string): string {
-    return model || this.baseModel.getDefaultModel()
+    return this.baseModel.getModel(model)
   }
 
   /**
@@ -123,20 +128,25 @@ export class UnifiedAI extends BaseModel {
     options?: T,
     callback?: AgentCallback,
   ): Promise<ResponseTypeForOptions<T>> {
+    options = options || {} as T
     // 通知开始响应
     callback?.('response_start', { prompt, options })
 
     try {
+      const tools = await this.getAllTools()
+
       if (options?.responseFormat === ResponseFormat.JSON) {
         prompt += '\n\nPlease return your response in valid JSON format only, without any non-JSON text.'
       }
-      if (this.functions.length > 0) {
-        prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself. If you need to use tools, ignore the JSON format requirement above.'
+      if (tools.length > 0) {
+        prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself.'
+
+      if (options?.responseFormat === ResponseFormat.JSON) {
+        prompt += '\n\nIf you need to use tools, ignore the JSON format requirement above.'
+      }
       }
       // 检查是否需要增强提示
       let enhancedPrompt = prompt
-
-      const tools = await this.getAllTools()
 
       // 准备选项，添加工具信息
       const enhancedOptions = ModelHelpers.prepareOptionsForModel(
@@ -144,9 +154,8 @@ export class UnifiedAI extends BaseModel {
         this.baseModel,
         tools,
       )
-
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && this.functions.length > 0) {
+      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && tools.length > 0) {
         enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, tools)
       }
 
@@ -165,10 +174,11 @@ export class UnifiedAI extends BaseModel {
       const finalResponse = await this.functionCallProcessor.processFunctionCallsRecursively(
         this.baseModel,
         initialResponse,
-        this.functions,
+        tools,
         0,
         callback,
-        options,
+        enhancedOptions,
+        this.mcpClient,
       ) as unknown as ResponseTypeForOptions<T>
 
       // 确保在JSON模式下返回解析后的JSON对象
@@ -234,7 +244,7 @@ export class UnifiedAI extends BaseModel {
       )
 
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && this.functions.length > 0) {
+      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && tools.length > 0) {
         enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, tools)
       }
       // 流式获取响应
@@ -303,7 +313,7 @@ export class UnifiedAI extends BaseModel {
           }
 
           // 执行函数调用
-          const executedCalls = await FunctionCallExecutor.executeFunctionCalls(currentCalls, this.functions, callback)
+          const executedCalls = await FunctionCallExecutor.executeFunctionCalls(currentCalls, tools, callback)
 
           // 将执行的函数调用添加到所有调用记录中
           allFunctionCalls.push(...executedCalls)

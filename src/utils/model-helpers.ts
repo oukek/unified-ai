@@ -45,60 +45,38 @@ export class ModelHelpers {
     }))
 
     // 添加函数说明和规范的调用格式
-    return `${content}\n\nYou can call the following functions:\n${JSON.stringify(functionDefinitions, null, 2)}\n\n
-When calling functions, please use the following standard JSON format:
+    return `${content}
 
-Single function call:
-{
-  "function_call": {
-    "name": "function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
+你可以调用以下工具，请务必严格使用下列工具名称和参数，工具名称必须保持一致，不得修改或新增：
 
-If you need to call multiple functions at once, use this format:
+工具列表：
+${JSON.stringify(functionDefinitions, null, 2)}
+
+调用工具时，请严格按照以下标准 JSON 格式输出：
+
+1. 当需要调用一个或多个工具时，请使用如下格式：
 {
+  "response": "你的文本响应",
   "function_calls": [
     {
-      "name": "first_function_name",
+      "name": "工具名称1",
       "arguments": {
-        "parameter_name": "parameter_value"
+        "参数名": "参数值"
       }
     },
     {
-      "name": "second_function_name",
+      "name": "工具名称2",
       "arguments": {
-        "parameter_name": "parameter_value"
+        "参数名": "参数值"
       }
     }
   ]
 }
 
-If you need to include a function call in your response, use this format:
-{
-  "response": "Your text response",
-  "function_call": {
-    "name": "function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
-
-If you need to suggest subsequent function calls after seeing the result of the first function call:
-{
-  "response": "Analysis of the first function call result",
-  "next_function_call": {
-    "name": "next_function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
-
-Please only use these exact function call formats. Do not invent other formats or property names.`
+请确保：
+- 只使用提供的工具名称，不得自行创建或更改工具名称；
+- 严格按照以上 JSON 格式输出，不要添加其他多余的文本或格式。
+`
   }
 
   /**

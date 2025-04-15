@@ -1,9 +1,10 @@
 {
   "name": "@oukek/unified-ai",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "unified-ai",
   "author": "Oukek",
   "license": "ISC",
+  "type": "module",
   "homepage": "https://github.com/oukek/unified-ai#readme",
   "repository": {
     "type": "git",

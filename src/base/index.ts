@@ -11,6 +11,14 @@ import type {
  */
 export abstract class BaseModel {
   /**
+   * 获取模型名称
+   * @param model 可选模型名称
+   * @returns 模型名称
+   */
+  getModel(model?: string): string {
+    return model || this.getDefaultModel()
+  }
+  /**
    * 发送聊天消息并获取响应
    * @param prompt 提示/消息内容
    * @param options 聊天请求的可选参数
