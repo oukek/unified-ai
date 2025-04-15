@@ -1,5 +1,5 @@
 import type { BaseModel } from '../base'
-import type { AgentFunction, ChatMessage, ChatOptions } from '../types'
+import type { AgentFunctionSchema, ChatMessage, ChatOptions } from '../types'
 import { ChatRole } from '../types'
 
 /**
@@ -13,13 +13,13 @@ export class ModelHelpers {
    * @param model 模型实例
    * @returns 模型特定格式的工具或null（如果不支持）
    */
-  static convertToolsForModel(tools: AgentFunction[], model: BaseModel): any {
+  static convertToolsForModel(tools: AgentFunctionSchema[], model: BaseModel, options?: ChatOptions): any {
     if (!tools || tools.length === 0) {
-      return null
+      return undefined
     }
 
-    if (!model.supportsTools()) {
-      return null
+    if (!model.supportsTools(options?.model)) {
+      return undefined
     }
 
     // 使用模型自己的转换方法
@@ -32,7 +32,7 @@ export class ModelHelpers {
    * @param tools 工具定义
    * @returns 增强后的提示
    */
-  static enhanceContentWithTools(content: string, tools: AgentFunction[]): string {
+  static enhanceContentWithTools(content: string, tools: AgentFunctionSchema[]): string {
     if (!tools || tools.length === 0) {
       return content
     }
@@ -45,60 +45,38 @@ export class ModelHelpers {
     }))
 
     // 添加函数说明和规范的调用格式
-    return `${content}\n\nYou can call the following functions:\n${JSON.stringify(functionDefinitions, null, 2)}\n\n
-When calling functions, please use the following standard JSON format:
+    return `${content}
 
-Single function call:
-{
-  "function_call": {
-    "name": "function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
+你可以调用以下工具，请务必严格使用下列工具名称和参数，工具名称必须保持一致，不得修改或新增：
 
-If you need to call multiple functions at once, use this format:
+工具列表：
+${JSON.stringify(functionDefinitions, null, 2)}
+
+调用工具时，请严格按照以下标准 JSON 格式输出：
+
+1. 当需要调用一个或多个工具时，请使用如下格式：
 {
+  "response": "你的文本响应",
   "function_calls": [
     {
-      "name": "first_function_name",
+      "name": "工具名称1",
       "arguments": {
-        "parameter_name": "parameter_value"
+        "参数名": "参数值"
       }
     },
     {
-      "name": "second_function_name",
+      "name": "工具名称2",
       "arguments": {
-        "parameter_name": "parameter_value"
+        "参数名": "参数值"
       }
     }
   ]
 }
 
-If you need to include a function call in your response, use this format:
-{
-  "response": "Your text response",
-  "function_call": {
-    "name": "function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
-
-If you need to suggest subsequent function calls after seeing the result of the first function call:
-{
-  "response": "Analysis of the first function call result",
-  "next_function_call": {
-    "name": "next_function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
-
-Please only use these exact function call formats. Do not invent other formats or property names.`
+请确保：
+- 只使用提供的工具名称，不得自行创建或更改工具名称；
+- 严格按照以上 JSON 格式输出，不要添加其他多余的文本或格式。
+`
   }
 
   /**
@@ -107,13 +85,13 @@ Please only use these exact function call formats. Do not invent other formats o
    * @param model 模型实例
    * @returns 处理后的消息数组
    */
-  static processSystemMessages(messages: ChatMessage[], model: BaseModel): ChatMessage[] {
+  static processSystemMessages(messages: ChatMessage[], model: BaseModel, options?: ChatOptions): ChatMessage[] {
     if (!messages || messages.length === 0) {
       return messages
     }
 
     // 如果模型支持系统消息，则直接返回
-    if (model.supportsSystemMessages()) {
+    if (model.supportsSystemMessages(options?.model)) {
       return messages
     }
 
@@ -144,7 +122,7 @@ Please only use these exact function call formats. Do not invent other formats o
       if (processedMessages.length > 0 && processedMessages[0].role === ChatRole.ASSISTANT) {
         processedMessages.unshift({
           role: ChatRole.USER,
-          content: '请根据上述系统指示继续',
+          content: 'Please continue according to the above system instructions.',
         })
       }
     }
@@ -162,7 +140,7 @@ Please only use these exact function call formats. Do not invent other formats o
   static prepareOptionsForModel<T extends ChatOptions | undefined = undefined>(
     options: T | undefined,
     model: BaseModel,
-    functions: AgentFunction[] = [],
+    functions: AgentFunctionSchema[] = [],
   ): T {
     if (!options) {
       return options as T
@@ -172,17 +150,10 @@ Please only use these exact function call formats. Do not invent other formats o
     const enhancedOptions = { ...options } as any
 
     // 处理工具
-    if (functions && functions.length > 0) {
-      const toolsForModel = this.convertToolsForModel(functions, model)
-      if (toolsForModel) {
-        enhancedOptions.tools = toolsForModel
-      }
-    }
+    enhancedOptions.tools = this.convertToolsForModel(functions, model, options)
 
     // 处理历史消息中的系统消息
-    if (enhancedOptions.history && enhancedOptions.history.length > 0) {
-      enhancedOptions.history = this.processSystemMessages(enhancedOptions.history, model)
-    }
+    enhancedOptions.history = this.processSystemMessages(enhancedOptions.history, model, options)
 
     return enhancedOptions as T
   }

@@ -1,6 +1,9 @@
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { z } from 'zod'
 import type {
   AgentCallback,
   AgentFunction,
+  AgentFunctionSchema,
   ChatOptions,
   ChatResponse,
   FunctionCall,
@@ -8,6 +11,7 @@ import type {
   StreamChunkTypeForOptions,
   UnifiedAIOptions,
 } from '../types'
+import zodToJsonSchema from 'zod-to-json-schema'
 import { BaseModel } from '../base'
 import { ResponseFormat } from '../types'
 import {
@@ -27,6 +31,7 @@ export class UnifiedAI extends BaseModel {
   private baseModel: BaseModel
   private functions: AgentFunction[]
   private functionCallProcessor: FunctionCallProcessor
+  private mcpClient?: Client
 
   /**
    * 构造函数
@@ -43,11 +48,11 @@ export class UnifiedAI extends BaseModel {
   }
 
   /**
-   * 获取底层模型实例
-   * @returns 模型实例或标识符
+   * 获取默认模型
+   * @returns 默认模型名称
    */
-  getModel(): string {
-    return this.baseModel.getModel()
+  getDefaultModel(): string {
+    return this.baseModel.getDefaultModel()
   }
 
   /**
@@ -67,6 +72,51 @@ export class UnifiedAI extends BaseModel {
   }
 
   /**
+   * 设置MCP客户端
+   * @param client MCP SDK客户端实例
+   * @returns 当前实例，用于链式调用
+   */
+  useMcp(client: Client): this {
+    this.mcpClient = client
+    return this
+  }
+
+  async getMcpTools(): Promise<AgentFunction[]> {
+    const toolsResponse = await this.mcpClient?.listTools()
+    return toolsResponse?.tools?.map(tool => ({
+      name: tool.name,
+      description: tool.description || '',
+      parameters: tool.inputSchema as unknown as z.ZodObject<any>,
+    })) || []
+  }
+
+  async getAllTools(): Promise<AgentFunctionSchema[]> {
+    const tools = [...this.functions, ...(await this.getMcpTools())]
+    return tools.map((tool) => {
+      let parameters: Record<string, any> = {}
+      if (tool.parameters instanceof z.ZodObject) {
+        parameters = zodToJsonSchema(tool.parameters, {
+          strictUnions: true,
+        })
+      } else {
+        parameters = tool.parameters
+      }
+      delete (parameters as any).$schema
+      delete (parameters as any).additionalProperties
+      return {
+        name: tool.name,
+        description: tool.description || '',
+        parameters,
+        executor: tool.executor,
+      }
+    })
+  }
+
+  getModel(model?: string): string {
+    return this.baseModel.getModel(model)
+  }
+
+  /**
    * 统一接口：发送聊天消息并获取响应
    * @param prompt 提示/消息内容
    * @param options 聊天请求的可选参数
@@ -78,15 +128,22 @@ export class UnifiedAI extends BaseModel {
     options?: T,
     callback?: AgentCallback,
   ): Promise<ResponseTypeForOptions<T>> {
+    options = options || {} as T
     // 通知开始响应
     callback?.('response_start', { prompt, options })
 
     try {
+      const tools = await this.getAllTools()
+
       if (options?.responseFormat === ResponseFormat.JSON) {
         prompt += '\n\nPlease return your response in valid JSON format only, without any non-JSON text.'
       }
-      if (this.functions.length > 0) {
-        prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself. If you need to use tools, ignore the JSON format requirement above.'
+      if (tools.length > 0) {
+        prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself.'
+
+      if (options?.responseFormat === ResponseFormat.JSON) {
+        prompt += '\n\nIf you need to use tools, ignore the JSON format requirement above.'
+      }
       }
       // 检查是否需要增强提示
       let enhancedPrompt = prompt
@@ -95,12 +152,11 @@ export class UnifiedAI extends BaseModel {
       const enhancedOptions = ModelHelpers.prepareOptionsForModel(
         options,
         this.baseModel,
-        this.functions,
+        tools,
       )
-
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools() && this.functions.length > 0) {
-        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
+      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && tools.length > 0) {
+        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, tools)
       }
 
       // 调用基础模型
@@ -118,10 +174,11 @@ export class UnifiedAI extends BaseModel {
       const finalResponse = await this.functionCallProcessor.processFunctionCallsRecursively(
         this.baseModel,
         initialResponse,
-        this.functions,
+        tools,
         0,
         callback,
-        options,
+        enhancedOptions,
+        this.mcpClient,
       ) as unknown as ResponseTypeForOptions<T>
 
       // 确保在JSON模式下返回解析后的JSON对象
@@ -177,24 +234,25 @@ export class UnifiedAI extends BaseModel {
       // 检查是否需要增强提示
       let enhancedPrompt = prompt
 
+      const tools = await this.getAllTools()
+
       // 准备选项，添加工具信息
       const enhancedOptions = ModelHelpers.prepareOptionsForModel(
         options,
         this.baseModel,
-        this.functions,
+        tools,
       )
 
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools() && this.functions.length > 0) {
-        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
+      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && tools.length > 0) {
+        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, tools)
       }
-
       // 流式获取响应
       let fullContent = ''
       let lastChunk = {
         content: '',
         isLast: false,
-        model: this.getModel(),
+        model: this.getModel(options?.model),
         isJsonResponse: false,
       } as StreamChunkTypeForOptions<T>
 
@@ -255,7 +313,7 @@ export class UnifiedAI extends BaseModel {
           }
 
           // 执行函数调用
-          const executedCalls = await FunctionCallExecutor.executeFunctionCalls(currentCalls, this.functions, callback)
+          const executedCalls = await FunctionCallExecutor.executeFunctionCalls(currentCalls, tools, callback)
 
           // 将执行的函数调用添加到所有调用记录中
           allFunctionCalls.push(...executedCalls)
@@ -317,16 +375,9 @@ export class UnifiedAI extends BaseModel {
                 isJsonResponse = true
               }
               catch {
-                // 解析失败，尝试修复
-                try {
-                  finalContent = JsonHelper.safeParseJson(contentStr)
-                  isJsonResponse = true
-                }
-                catch (e: any) {
-                  // 如果解析仍失败，保留原样
-                  finalContent = `\n\nFinal result (JSON parsing failed):\n${contentStr}`
-                  console.error(`无法解析或修复JSON响应: ${e.message}`)
-                }
+                // 如果解析仍失败，保留原样
+                finalContent = `\n\nFinal result (JSON parsing failed):\n${contentStr}`
+                console.error(`无法解析或修复JSON响应`)
               }
             }
             else if (!isJsonResponse) {

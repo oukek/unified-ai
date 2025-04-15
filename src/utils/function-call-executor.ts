@@ -1,4 +1,5 @@
-import type { AgentCallback, AgentFunction, FunctionCall } from '../types'
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { AgentCallback, AgentFunction, AgentFunctionSchema, FunctionCall } from '../types'
 
 /**
  * 函数调用执行器
@@ -14,14 +15,15 @@ export class FunctionCallExecutor {
    */
   static async executeFunctionCalls(
     functionCalls: FunctionCall[],
-    functions: AgentFunction[],
+    functions: AgentFunctionSchema[],
     callback?: AgentCallback,
+    mcpClient?: Client,
   ): Promise<FunctionCall[]> {
     const results: FunctionCall[] = []
 
     // 通知开始执行函数调用
     callback?.('function_call_start', { functionCalls })
-
+    
     for (const call of functionCalls) {
       const func = functions.find(f => f.name === call.name)
 
@@ -30,8 +32,18 @@ export class FunctionCallExecutor {
           // 复制函数调用对象，添加执行结果
           const resultCall = { ...call }
 
-          // 执行函数
-          resultCall.result = await func.executor(call.arguments)
+          if (func.executor) {
+            // 执行函数
+            resultCall.result = await func.executor(call.arguments)
+          }
+          else {
+            // 执行函数
+            resultCall.result = await mcpClient?.callTool({
+              name: func.name,
+              arguments: call.arguments,
+            })
+            console.log('----resultCall', func.name, call.arguments, resultCall.result)
+          }
           results.push(resultCall)
         }
         catch (error: any) {

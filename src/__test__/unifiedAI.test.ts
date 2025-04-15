@@ -1,4 +1,5 @@
 import type { AgentCallback, AgentFunction } from '../types'
+import { z } from 'zod'
 import { GeminiModel } from '../models/gemini'
 import { UnifiedAI } from '../models/unified'
 
@@ -25,16 +26,11 @@ describe('unifiedAI tests', () => {
     const weatherFunction: AgentFunction = {
       name: 'getWeather',
       description: '获取指定城市的天气信息',
-      parameters: {
-        type: 'object',
-        properties: {
-          city: {
-            type: 'string',
-            description: '城市名称',
-          },
-        },
-        required: ['city'],
-      },
+      parameters: z.object({
+        city: z.string({
+          description: '城市名称',
+        }),
+      }),
       executor: async (params) => {
         const { city } = params
         // 模拟API调用
@@ -50,16 +46,11 @@ describe('unifiedAI tests', () => {
     const calculatorFunction: AgentFunction = {
       name: 'calculate',
       description: '执行简单的数学计算',
-      parameters: {
-        type: 'object',
-        properties: {
-          expression: {
-            type: 'string',
-            description: '数学表达式，例如 "2 + 2"',
-          },
-        },
-        required: ['expression'],
-      },
+      parameters: z.object({
+        expression: z.string({
+          description: '数学表达式，例如 "2 + 2"',
+        }),
+      }),
       executor: async (params) => {
         const { expression } = params
         try {
@@ -77,21 +68,14 @@ describe('unifiedAI tests', () => {
     const temperatureConverterFunction: AgentFunction = {
       name: 'convertTemperature',
       description: '将温度从摄氏度转换为华氏度，或从华氏度转换为摄氏度',
-      parameters: {
-        type: 'object',
-        properties: {
-          temperature: {
-            type: 'number',
-            description: '要转换的温度值',
-          },
-          fromUnit: {
-            type: 'string',
-            description: '原始温度单位 (C 或 F)',
-            enum: ['C', 'F'],
-          },
-        },
-        required: ['temperature', 'fromUnit'],
-      },
+      parameters: z.object({
+        temperature: z.number({
+          description: '要转换的温度值',
+        }),
+        fromUnit: z.enum(['C', 'F'], {
+          description: '原始温度单位 (C 或 F)',
+        }),
+      }),
       executor: async (params) => {
         const { temperature, fromUnit } = params
 
@@ -109,16 +93,11 @@ describe('unifiedAI tests', () => {
     const cityInfoFunction: AgentFunction = {
       name: 'getCityInfo',
       description: '获取城市基本信息，包括人口、面积等',
-      parameters: {
-        type: 'object',
-        properties: {
-          city: {
-            type: 'string',
-            description: '城市名称',
-          },
-        },
-        required: ['city'],
-      },
+      parameters: z.object({
+        city: z.string({
+          description: '城市名称',
+        }),
+      }),
       executor: async (params: any) => {
         const { city } = params
         const citys: Record<string, any> = {
@@ -149,8 +128,8 @@ describe('unifiedAI tests', () => {
       autoExecuteFunctions: true,
       maxRecursionDepth: 3,
     })
-    console.log('unifiedAI', unifiedAI.getModel())
-    console.log('customUnifiedAI', customUnifiedAI.getModel())
+    console.log('unifiedAI', unifiedAI.getDefaultModel())
+    console.log('customUnifiedAI', customUnifiedAI.getDefaultModel())
 
     // 创建回调函数
     agentCallback = jest.fn((state, data) => {

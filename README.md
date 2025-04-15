@@ -11,13 +11,15 @@
 - 统一的API接口设计，一套代码适配多种模型
 - 支持多种主流AI模型（如Gemini等）
 - 支持标准响应和流式响应两种交互模式
-- 支持Agent功能（函数调用）
+- 强大的Agent功能（函数调用），支持链式调用执行
+- 支持Model Context Protocol (MCP)，可与文件系统等外部工具交互
 - 内置JSON修复功能，自动处理模型返回的非标准JSON
 - 完全TypeScript支持，提供完善的类型定义
 
 ## 支持的模型
 
 - **Gemini**: 支持Google的Gemini系列模型
+- **自定义模型**: 支持扩展实现自定义模型
 
 ## 安装
 
@@ -123,6 +125,7 @@ UnifiedAI支持函数调用，可以让AI助手执行特定操作：
 
 ```typescript
 import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
+import { z } from 'zod'
 
 // 初始化
 const geminiModel = new GeminiModel({
@@ -130,20 +133,15 @@ const geminiModel = new GeminiModel({
 })
 const ai = new UnifiedAI(geminiModel)
 
-// 添加函数
+// 添加函数（使用Zod验证参数）
 ai.addFunction({
   name: 'getCurrentWeather',
   description: '获取指定城市的当前天气',
-  parameters: {
-    type: 'object',
-    properties: {
-      city: {
-        type: 'string',
-        description: '城市名称'
-      }
-    },
-    required: ['city']
-  },
+  parameters: z.object({
+    city: z.string({
+      description: '城市名称'
+    })
+  }),
   executor: async (params) => {
     // 实际实现会调用天气API
     return {
@@ -169,6 +167,114 @@ async function chatWithFunctions() {
 chatWithFunctions()
 ```
 
+### 多个函数和链式调用
+
+可以添加多个函数并支持链式调用：
+
+```typescript
+import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
+import { z } from 'zod'
+
+// 初始化
+const geminiModel = new GeminiModel({
+  apiKey: process.env.GEMINI_API_KEY
+})
+const ai = new UnifiedAI(geminiModel, {
+  maxRecursionDepth: 3, // 设置最大递归深度
+})
+
+// 添加天气查询函数
+ai.addFunction({
+  name: 'getWeather',
+  description: '获取指定城市的天气信息',
+  parameters: z.object({
+    city: z.string({
+      description: '城市名称',
+    }),
+  }),
+  executor: async (params) => {
+    const { city } = params
+    // 模拟API调用
+    return {
+      city,
+      temperature: Math.floor(Math.random() * 30) + 5,
+      condition: ['晴朗', '多云', '小雨', '大雨'][Math.floor(Math.random() * 4)],
+      humidity: Math.floor(Math.random() * 60) + 40,
+    }
+  },
+})
+
+// 添加温度转换函数
+ai.addFunction({
+  name: 'convertTemperature',
+  description: '将温度从摄氏度转换为华氏度，或从华氏度转换为摄氏度',
+  parameters: z.object({
+    temperature: z.number({
+      description: '要转换的温度值',
+    }),
+    fromUnit: z.enum(['C', 'F'], {
+      description: '原始温度单位 (C 或 F)',
+    }),
+  }),
+  executor: async (params) => {
+    const { temperature, fromUnit } = params
+    if (fromUnit === 'C') {
+      const fahrenheit = (temperature * 9 / 5) + 32
+      return { result: fahrenheit, unit: 'F' }
+    }
+    else {
+      const celsius = (temperature - 32) * 5 / 9
+      return { result: celsius, unit: 'C' }
+    }
+  },
+})
+
+// 链式调用示例
+async function chainedFunctionCalls() {
+  // AI将自动调用getWeather获取温度，然后调用convertTemperature进行转换
+  const response = await ai.unifiedChat(
+    '北京今天的温度是多少摄氏度？请同时告诉我对应的华氏度。'
+  )
+  console.log('AI回复:', response.content)
+}
+
+chainedFunctionCalls()
+```
+
+### JSON响应格式
+
+可以指定AI返回JSON格式的数据：
+
+```typescript
+import { GeminiModel, UnifiedAI, ResponseFormat } from '@oukek/unified-ai'
+
+// 初始化
+const geminiModel = new GeminiModel({
+  apiKey: process.env.GEMINI_API_KEY
+})
+const ai = new UnifiedAI(geminiModel)
+
+// 请求JSON格式响应
+async function getJsonResponse() {
+  const jsonPrompt = `请提供北京和上海的基本信息，包括人口、面积、所属国家和建城时间`
+
+  const response = await ai.unifiedChat(
+    jsonPrompt,
+    { responseFormat: ResponseFormat.JSON }
+  )
+
+  // 响应已自动解析为JavaScript对象
+  console.log('城市信息:', response.content)
+  
+  // 可以直接访问对象属性
+  if (response.content.cities) {
+    console.log('北京人口:', response.content.cities['北京'].population)
+  }
+}
+
+getJsonResponse()
+```
+
 ### 使用回调函数监控过程
 
 ```typescript
@@ -182,21 +288,34 @@ const ai = new UnifiedAI(geminiModel)
 
 // 定义回调函数
 const callback = (state: string, data: any) => {
+  const timestamp = new Date().toISOString()
+  
   switch (state) {
     case 'response_start':
-      console.log('开始响应')
+      console.log(`[${timestamp}] 🟢 开始回答: "${data.prompt}"`)
       break
-    case 'response_end':
-      console.log('响应结束')
-      break
+
     case 'function_call_start':
-      console.log(`开始调用函数: ${data.functionCall.name}`)
+      console.log(`[${timestamp}] 🔄 调用函数: ${data.functionCalls.map((f: any) => f.name).join(', ')}`)
       break
+
     case 'function_call_end':
-      console.log(`函数调用完成: ${data.functionCall.name}`)
+      console.log(`[${timestamp}] ✅ 函数执行完成: ${data.functionCalls.map((f: any) => f.name).join(', ')}`)
       break
+
+    case 'response_chunk':
+      // 流式响应的每个块，这里不打印避免干扰输出
+      break
+
+    case 'response_end':
+      const content = typeof data.response.content === 'string' 
+        ? data.response.content 
+        : JSON.stringify(data.response.content)
+      console.log(`[${timestamp}] 🏁 回答完成，长度: ${content.length}字符`)
+      break
+
     case 'error':
-      console.error('发生错误:', data.error)
+      console.error(`[${timestamp}] ❌ 错误:`, data.error)
       break
   }
 }
@@ -208,6 +327,71 @@ async function chatWithCallback() {
 }
 
 chatWithCallback()
+```
+
+### Model Context Protocol (MCP) 支持
+
+UnifiedAI支持通过MCP协议与外部工具（如文件系统）进行交互：
+
+```typescript
+import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { z } from 'zod'
+
+async function setupAIWithMCP() {
+  // 创建基础模型实例
+  const baseModel = new GeminiModel({
+    apiKey: process.env.GEMINI_API_KEY
+  })
+  
+  // 创建UnifiedAI实例
+  const ai = new UnifiedAI(baseModel, {
+    maxRecursionDepth: 5,
+  })
+  
+  // 创建MCP客户端
+  const mcpClient = new Client({ name: 'mcp-client', version: '1.0.0' })
+  const transport = new StdioClientTransport({
+    command: 'npx',
+    args: [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "/path/to/workspace",
+    ],
+  })
+  
+  // 连接到传输层
+  await mcpClient.connect(transport)
+  
+  // 将MCP客户端添加到UnifiedAI
+  ai.useMcp(mcpClient)
+  
+  // 添加自定义函数
+  ai.addFunction({
+    name: 'randomNumber',
+    description: '获取指定范围内的随机数',
+    parameters: z.object({
+      min: z.number().optional(),
+      max: z.number().optional(),
+    }),
+    executor: async ({ min = 1, max = 100 }) => {
+      return Math.floor(Math.random() * (max - min + 1)) + min
+    },
+  })
+  
+  // 使用MCP功能与文件系统交互
+  const response = await ai.unifiedChat(
+    '创建一个test.txt文件，写入一个10-100之间的随机数，然后读取并告诉我内容'
+  )
+  
+  console.log('AI回复:', response.content)
+  
+  // 关闭MCP连接
+  await mcpClient.close()
+}
+
+setupAIWithMCP()
 ```
 
 ## API文档
@@ -238,7 +422,6 @@ constructor(
   baseModel: BaseModel, 
   options?: {
     functions?: AgentFunction[];
-    autoExecuteFunctions?: boolean;
     maxRecursionDepth?: number;
     [key: string]: any;
   }
@@ -261,6 +444,9 @@ constructor(
 
 - `addFunctions(functions: AgentFunction[]): void`  
   添加多个Agent功能（函数）。
+
+- `useMcp(client: Client): this`  
+  设置MCP客户端，支持与外部工具交互。
 
 ### GeminiModel
 
@@ -305,11 +491,24 @@ interface AgentFunction {
   /** 函数名称 */
   name: string;
   /** 函数描述 */
-  description: string;
-  /** 函数参数模式 */
-  parameters: Record<string, any>;
+  description?: string;
+  /** 函数参数模式（可使用zod进行定义） */
+  parameters: z.ZodObject<any> | Record<string, any>;
   /** 函数执行器 */
-  executor: (params: Record<string, any>) => Promise<any>;
+  executor?: (params: Record<string, any>) => Promise<any>;
+}
+```
+
+### FunctionCall
+
+```typescript
+interface FunctionCall {
+  /** 函数名称 */
+  name: string;
+  /** 函数参数 */
+  arguments: Record<string, any>;
+  /** 函数执行结果 */
+  result?: any;
 }
 ```
 

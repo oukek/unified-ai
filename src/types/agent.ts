@@ -1,3 +1,4 @@
+import type { z } from 'zod'
 import type { ChatOptions, ChatResponse, ResponseFormat } from '.'
 
 /**
@@ -7,11 +8,18 @@ export interface AgentFunction {
   /** 函数名称 */
   name: string
   /** 函数描述 */
-  description: string
+  description?: string
   /** 函数参数模式 */
-  parameters: Record<string, any>
+  parameters: z.ZodObject<any>
   /** 函数执行器 */
-  executor: (params: Record<string, any>) => Promise<any>
+  executor?: (params: Record<string, any>) => Promise<any>
+}
+
+export interface AgentFunctionSchema {
+  name: string
+  description?: string
+  parameters: Record<string, any>
+  executor?: (params: Record<string, any>) => Promise<any>
 }
 
 /**

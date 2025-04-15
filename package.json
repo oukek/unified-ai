@@ -1,10 +1,10 @@
 {
   "name": "@oukek/unified-ai",
-  "type": "module",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "unified-ai",
   "author": "Oukek",
   "license": "ISC",
+  "type": "module",
   "homepage": "https://github.com/oukek/unified-ai#readme",
   "repository": {
     "type": "git",
@@ -55,11 +55,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.0",
+    "@google/genai": "^0.8.0",
     "@modelcontextprotocol/sdk": "^1.9.0",
     "dotenv": "^16.5.0",
     "jsonrepair": "^3.12.0",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.24.5"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.12.0",
