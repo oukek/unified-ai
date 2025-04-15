@@ -1,17 +1,23 @@
 import type { AgentCallback, AgentFunction } from '../types'
 import { GeminiModel } from '../models/gemini'
-
 import { UnifiedAI } from '../models/unified'
+
 import { ResponseFormat } from '../types'
+import { CustomModel } from './customModel'
 import 'dotenv/config'
 
 describe('unifiedAI tests', () => {
   let unifiedAI: UnifiedAI
+  let customUnifiedAI: UnifiedAI
   let agentCallback: AgentCallback
 
   beforeEach(() => {
     // 创建基础模型实例
     const baseModel = new GeminiModel({
+      apiKey: process.env.GEMINI_API_KEY ?? '',
+    })
+
+    const customModel = new CustomModel({
       apiKey: process.env.GEMINI_API_KEY ?? '',
     })
 
@@ -138,6 +144,14 @@ describe('unifiedAI tests', () => {
       maxRecursionDepth: 3,
     })
 
+    customUnifiedAI = new UnifiedAI(customModel, {
+      functions: [weatherFunction, calculatorFunction, temperatureConverterFunction, cityInfoFunction],
+      autoExecuteFunctions: true,
+      maxRecursionDepth: 3,
+    })
+    console.log('unifiedAI', unifiedAI.getModel())
+    console.log('customUnifiedAI', customUnifiedAI.getModel())
+
     // 创建回调函数
     agentCallback = jest.fn((state, data) => {
       const timestamp = new Date().toISOString()
@@ -238,9 +252,58 @@ describe('unifiedAI tests', () => {
 
   // JSON格式响应测试
   it('jSON格式响应测试', async () => {
-    const jsonPrompt = '请提供北京和上海的基本信息，包括人口、面积、所属国家和建城时间'
+    const jsonPrompt = `请提供北京和上海的基本信息，包括人口、面积、所属国家和建城时间, 返回格式为 {
+      "cities": {
+        [city: string]: {
+          "population": string,
+          "area": string,
+          "country": string,
+          "founded": string
+        },
+      }
+    }`
 
     const jsonResponse = await unifiedAI.unifiedChat(
+      jsonPrompt,
+      { responseFormat: ResponseFormat.JSON },
+      agentCallback,
+    )
+
+    expect(jsonResponse.content).toBeTruthy()
+    expect(typeof jsonResponse.content).toBe('object')
+
+    // 转换为特定类型进行断言
+    interface CityInfoResponse {
+      cities?: { [city: string]: { population: string, area: string, country: string, founded: string } }
+      result?: any
+    }
+
+    const typedContent = jsonResponse.content as CityInfoResponse
+    if (typedContent.cities) {
+      expect(typedContent.cities['北京']).toBeDefined()
+      expect(typedContent.cities['上海']).toBeDefined()
+    }
+  }, 30000)
+
+  it('自定义模型测试', async () => {
+    const response = await customUnifiedAI.unifiedChat('请用中文回答，今天上海的温度是多少摄氏度？请将其转换为华氏度并告诉我')
+    console.log('response custom 222', response.content)
+    expect(response.content).toBeTruthy()
+  }, 30000)
+
+  it('自定义模型测试json', async () => {
+    const jsonPrompt = `请提供北京和上海的基本信息，包括人口、面积、所属国家和建城时间, 返回格式为 {
+      "cities": {
+        [city: string]: {
+          "population": string,
+          "area": string,
+          "country": string,
+          "founded": string
+        },
+      }
+    }`
+
+    const jsonResponse = await customUnifiedAI.unifiedChat(
       jsonPrompt,
       { responseFormat: ResponseFormat.JSON },
       agentCallback,

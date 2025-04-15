@@ -15,6 +15,7 @@ import {
   FunctionCallParser,
   FunctionCallProcessor,
   JsonHelper,
+  ModelHelpers,
   PromptEnhancer,
 } from '../utils'
 
@@ -81,11 +82,29 @@ export class UnifiedAI extends BaseModel {
     callback?.('response_start', { prompt, options })
 
     try {
-      // 增强提示，添加函数定义
-      const enhancedPrompt = PromptEnhancer.enhancePrompt(prompt, this.functions)
+      if (options?.responseFormat === ResponseFormat.JSON) {
+        prompt += '\n\nPlease return your response in valid JSON format only, without any non-JSON text.'
+      }
+      if (this.functions.length > 0) {
+        prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself. If you need to use tools, ignore the JSON format requirement above.'
+      }
+      // 检查是否需要增强提示
+      let enhancedPrompt = prompt
+
+      // 准备选项，添加工具信息
+      const enhancedOptions = ModelHelpers.prepareOptionsForModel(
+        options,
+        this.baseModel,
+        this.functions,
+      )
+
+      // 如果模型不支持工具，使用提示增强
+      if (!this.baseModel.supportsTools() && this.functions.length > 0) {
+        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
+      }
 
       // 调用基础模型
-      const response = await this.baseModel.unifiedChat(enhancedPrompt, options)
+      const response = await this.baseModel.unifiedChat(enhancedPrompt, enhancedOptions)
 
       // 保存原始用户提示
       const initialResponse = {
@@ -155,8 +174,20 @@ export class UnifiedAI extends BaseModel {
     callback?.('response_start', { prompt, options })
 
     try {
-      // 增强提示，添加函数定义
-      const enhancedPrompt = PromptEnhancer.enhancePrompt(prompt, this.functions)
+      // 检查是否需要增强提示
+      let enhancedPrompt = prompt
+
+      // 准备选项，添加工具信息
+      const enhancedOptions = ModelHelpers.prepareOptionsForModel(
+        options,
+        this.baseModel,
+        this.functions,
+      )
+
+      // 如果模型不支持工具，使用提示增强
+      if (!this.baseModel.supportsTools() && this.functions.length > 0) {
+        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
+      }
 
       // 流式获取响应
       let fullContent = ''
@@ -171,7 +202,7 @@ export class UnifiedAI extends BaseModel {
       const allFunctionCalls: FunctionCall[] = []
 
       // 处理流式响应
-      for await (const chunk of this.baseModel.unifiedChatStream(enhancedPrompt, options)) {
+      for await (const chunk of this.baseModel.unifiedChatStream(enhancedPrompt, enhancedOptions)) {
         // 在处理过程中始终使用字符串内容
         const chunkContent = typeof chunk.content === 'object'
           ? JSON.stringify(chunk.content)
@@ -262,7 +293,7 @@ export class UnifiedAI extends BaseModel {
           )
 
           // 获取包含函数结果的后续响应
-          const followupResponse = await this.baseModel.unifiedChat(followupPrompt, options)
+          const followupResponse = await this.baseModel.unifiedChat(followupPrompt, enhancedOptions)
 
           // 更新当前响应和递归深度
           currentResponse = followupResponse

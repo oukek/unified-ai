@@ -1,4 +1,4 @@
-import type { ChatOptions, ResponseTypeForOptions, StreamChunkTypeForOptions } from '../types'
+import type { AgentFunction, ChatOptions, ResponseTypeForOptions, StreamChunkTypeForOptions } from '../types'
 
 /**
  * BaseModel 抽象类
@@ -32,4 +32,35 @@ export abstract class BaseModel {
    * @returns 模型实例或标识符
    */
   abstract getModel(): string
+
+  /**
+   * 检查模型是否原生支持工具/函数
+   * @returns 是否支持工具
+   */
+  supportsTools(): boolean {
+    return false // 默认不支持，子类可以覆盖此方法
+  }
+
+  /**
+   * 检查模型是否原生支持系统消息
+   * @returns 是否支持系统消息
+   */
+  supportsSystemMessages(): boolean {
+    return false // 默认不支持，子类可以覆盖此方法
+  }
+
+  /**
+   * 将统一格式的工具转换为模型特定的格式
+   * @param tools 统一格式的工具定义列表
+   * @returns 模型特定格式的工具定义
+   */
+  convertToolsFormat(tools: AgentFunction[]): any {
+    // 默认实现返回基本工具结构
+    // 具体模型可以覆盖此方法实现特定的转换逻辑
+    return tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    }))
+  }
 }
