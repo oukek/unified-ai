@@ -87,8 +87,7 @@ export class FunctionCallProcessor {
             const contentStr = typeof initialResponse.content === 'string'
               ? initialResponse.content
               : JSON.stringify(initialResponse.content)
-            const repairedJson = JsonHelper.repairJson(contentStr)
-            response.content = JSON.parse(repairedJson)
+            response.content = JsonHelper.safeParseJson(contentStr)
             response.isJsonResponse = true
           }
           catch (e: any) {

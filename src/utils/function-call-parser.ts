@@ -1,4 +1,5 @@
 import type { FunctionCall } from '../types'
+import { JsonHelper } from './json-helper'
 
 /**
  * 函数调用解析器
@@ -28,7 +29,7 @@ export class FunctionCallParser {
     // 尝试解析JSON并提取函数调用
     try {
       // 检查内容是否为完整JSON
-      const jsonObj = typeof content === 'object' ? content : JSON.parse(contentStr)
+      const jsonObj = typeof content === 'object' ? content : JsonHelper.safeParseJson(contentStr)
 
       // 首先检查是否有批量函数调用
       if (jsonObj.function_calls && Array.isArray(jsonObj.function_calls)) {
@@ -69,7 +70,7 @@ export class FunctionCallParser {
       if (call && typeof call === 'object' && call.name) {
         functionCalls.push({
           name: call.name,
-          arguments: typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments,
+          arguments: typeof call.arguments === 'string' ? JsonHelper.safeParseJson(call.arguments) : call.arguments,
         })
       }
     }
@@ -86,7 +87,7 @@ export class FunctionCallParser {
         const call = obj[key]
         functionCalls.push({
           name: call.name,
-          arguments: typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments,
+          arguments: typeof call.arguments === 'string' ? JsonHelper.safeParseJson(call.arguments) : call.arguments,
         })
       }
     }
@@ -126,7 +127,7 @@ export class FunctionCallParser {
     for (const match of jsonMatches) {
       try {
         const jsonContent = match[1].trim()
-        const jsonObj = JSON.parse(jsonContent)
+        const jsonObj = JsonHelper.safeParseJson(jsonContent)
 
         // 检查JSON代码块中是否有批量函数调用
         if (jsonObj.function_calls && Array.isArray(jsonObj.function_calls)) {

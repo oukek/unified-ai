@@ -8,7 +8,6 @@ import type {
   SafetySetting,
 } from '@google/generative-ai'
 import type {
-  AgentFunction,
   ChatMessage,
   ChatOptions,
   ResponseTypeForOptions,
@@ -43,7 +42,7 @@ export interface GeminiOptions {
  * Gemini 模型类
  * 基于 Google Generative AI SDK 的实现
  */
-export class GeminiModel extends BaseModel {
+export class CustomModel extends BaseModel {
   private genAI: GoogleGenerativeAI
   private model: GenerativeModel
   private modelName: string
@@ -76,7 +75,7 @@ export class GeminiModel extends BaseModel {
    * @returns 是否支持工具
    */
   supportsTools(): boolean {
-    return true // Gemini支持工具
+    return false // Gemini支持工具
   }
 
   /**
@@ -85,28 +84,6 @@ export class GeminiModel extends BaseModel {
    */
   supportsSystemMessages(): boolean {
     return false // Gemini不直接支持系统消息
-  }
-
-  /**
-   * 将统一格式的工具转换为Gemini特定的格式
-   * @param tools 统一格式的工具定义列表
-   * @returns Gemini特定格式的工具定义
-   */
-  convertToolsFormat(tools: AgentFunction[]): any {
-    if (!tools || tools.length === 0) {
-      return []
-    }
-
-    // 转换为Gemini的工具格式
-    // 注意：这里返回any类型以避免复杂的类型问题
-    // 名字要把驼峰转换为下划线
-    return [{
-      functionDeclarations: tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      })),
-    }]
   }
 
   /**
@@ -185,16 +162,7 @@ export class GeminiModel extends BaseModel {
     let content: any = rawText
     const isJsonMode = options?.responseFormat === ResponseFormat.JSON
 
-    const functionCalls = response.response.functionCalls() || []
-    if (functionCalls.length > 0) {
-      content = {
-        function_calls: functionCalls.map((call: any) => ({
-          name: call.name,
-          arguments: call.args,
-        })),
-      }
-    }
-    else if (isJsonMode) {
+    if (isJsonMode) {
       try {
         // 尝试解析JSON
         content = JsonHelper.safeParseJson(rawText)
@@ -318,14 +286,24 @@ export class GeminiModel extends BaseModel {
         geminiOptions.maxOutputTokens = options.maxTokens
       }
 
+      // 如果是JSON模式，添加系统指令提示
+      if (options?.responseFormat === ResponseFormat.JSON) {
+        // 在用户输入前添加指令，确保模型以JSON格式返回
+        const jsonInstruction = {
+          role: 'user',
+          parts: [{ text: 'Please return your response in valid JSON format only, without any non-JSON text.' }] as Part[],
+        }
+        geminiInput.unshift(jsonInstruction)
+      }
+
       // 调用 Gemini API
       const response = await this.model.generateContent({
         contents: geminiInput,
-        generationConfig: {
-          ...geminiOptions,
-        },
-        tools: options?.tools,
+        generationConfig: geminiOptions,
       })
+      console.log('response custom', geminiInput.map(i => i.parts[0].text))
+      console.log('response custom', response.response.text())
+      console.log('response custom', response.response.functionCalls())
 
       // 转换为统一格式并返回
       return this.convertGeminiResponseToUnified(response, options)
@@ -378,11 +356,27 @@ export class GeminiModel extends BaseModel {
         geminiOptions.maxOutputTokens = options.maxTokens
       }
 
+      // 如果是JSON模式，添加系统指令提示
+      if (options?.responseFormat === ResponseFormat.JSON) {
+        // 在用户输入前添加指令，确保模型以JSON格式返回
+        const jsonInstruction = {
+          role: 'user',
+          parts: [{ text: 'Please return your response in valid JSON format only, without any non-JSON text.' }] as Part[],
+        }
+        geminiInput.unshift(jsonInstruction)
+      }
+
+      // 处理工具参数
+      // let tools: GeminiTool[] | undefined
+      if (options?.tools && Array.isArray(options.tools)) {
+        // tools = this.convertToolsFormat(options.tools)
+        // console.log('tools', tools)
+      }
+
       // 调用 Gemini 流式 API
       const streamResult = await this.model.generateContentStream({
         contents: geminiInput,
         generationConfig: geminiOptions,
-        tools: options?.tools,
       })
 
       // 用于累积JSON流式输出的缓冲区
@@ -391,21 +385,6 @@ export class GeminiModel extends BaseModel {
 
       // 在流式过程中，始终使用文本格式发送片段
       for await (const chunk of streamResult.stream) {
-        const functionCalls = chunk.functionCalls() || []
-        if (functionCalls.length > 0) {
-          const functionCallChunk = {
-            content: JSON.stringify({
-              function_calls: functionCalls.map((call: any) => ({
-                name: call.name,
-                arguments: call.args,
-              })),
-            }),
-            isJsonResponse: true,
-            isLast: true,
-            model: this.modelName,
-          } as StreamChunkTypeForOptions<T>
-          yield functionCallChunk
-        }
         const text = chunk.text()
         if (text) {
           if (isJsonMode) {

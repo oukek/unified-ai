@@ -1,7 +1,7 @@
 {
   "name": "@oukek/unified-ai",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "unified-ai",
   "author": "Oukek",
   "license": "ISC",
@@ -56,8 +56,10 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
+    "@modelcontextprotocol/sdk": "^1.9.0",
     "dotenv": "^16.5.0",
-    "jsonrepair": "^3.12.0"
+    "jsonrepair": "^3.12.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.12.0",
