@@ -1,3 +1,4 @@
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type {
   AgentCallback,
   AgentFunction,
@@ -27,6 +28,7 @@ export class UnifiedAI extends BaseModel {
   private baseModel: BaseModel
   private functions: AgentFunction[]
   private functionCallProcessor: FunctionCallProcessor
+  private mcpClient?: Client
 
   /**
    * 构造函数
@@ -43,11 +45,11 @@ export class UnifiedAI extends BaseModel {
   }
 
   /**
-   * 获取底层模型实例
-   * @returns 模型实例或标识符
+   * 获取默认模型
+   * @returns 默认模型名称
    */
-  getModel(): string {
-    return this.baseModel.getModel()
+  getDefaultModel(): string {
+    return this.baseModel.getDefaultModel()
   }
 
   /**
@@ -64,6 +66,16 @@ export class UnifiedAI extends BaseModel {
    */
   addFunctions(functions: AgentFunction[]): void {
     this.functions.push(...functions)
+  }
+
+  /**
+   * 设置MCP客户端
+   * @param client MCP SDK客户端实例
+   * @returns 当前实例，用于链式调用
+   */
+  useMcp(client: Client): this {
+    this.mcpClient = client
+    return this
   }
 
   /**
@@ -99,7 +111,7 @@ export class UnifiedAI extends BaseModel {
       )
 
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools() && this.functions.length > 0) {
+      if (!this.baseModel.supportsTools(options?.model) && this.functions.length > 0) {
         enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
       }
 
@@ -188,13 +200,12 @@ export class UnifiedAI extends BaseModel {
       if (!this.baseModel.supportsTools() && this.functions.length > 0) {
         enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
       }
-
       // 流式获取响应
       let fullContent = ''
       let lastChunk = {
         content: '',
         isLast: false,
-        model: this.getModel(),
+        model: options?.model || this.baseModel.getDefaultModel(),
         isJsonResponse: false,
       } as StreamChunkTypeForOptions<T>
 

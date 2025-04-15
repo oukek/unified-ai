@@ -31,13 +31,13 @@ export abstract class BaseModel {
    * 获取底层模型实例
    * @returns 模型实例或标识符
    */
-  abstract getModel(): string
+  abstract getDefaultModel(): string
 
   /**
    * 检查模型是否原生支持工具/函数
    * @returns 是否支持工具
    */
-  supportsTools(): boolean {
+  supportsTools(_model?: string): boolean {
     return false // 默认不支持，子类可以覆盖此方法
   }
 
@@ -45,7 +45,7 @@ export abstract class BaseModel {
    * 检查模型是否原生支持系统消息
    * @returns 是否支持系统消息
    */
-  supportsSystemMessages(): boolean {
+  supportsSystemMessages(_model?: string): boolean {
     return false // 默认不支持，子类可以覆盖此方法
   }
 

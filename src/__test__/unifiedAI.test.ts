@@ -149,8 +149,8 @@ describe('unifiedAI tests', () => {
       autoExecuteFunctions: true,
       maxRecursionDepth: 3,
     })
-    console.log('unifiedAI', unifiedAI.getModel())
-    console.log('customUnifiedAI', customUnifiedAI.getModel())
+    console.log('unifiedAI', unifiedAI.getDefaultModel())
+    console.log('customUnifiedAI', customUnifiedAI.getDefaultModel())
 
     // 创建回调函数
     agentCallback = jest.fn((state, data) => {

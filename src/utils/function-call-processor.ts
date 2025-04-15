@@ -78,7 +78,7 @@ export class FunctionCallProcessor {
             : JSON.stringify(initialResponse.content)
 
           // 尝试解析JSON
-          response.content = JSON.parse(contentStr)
+          response.content = JsonHelper.safeParseJson(contentStr)
           response.isJsonResponse = true
         }
         catch {
