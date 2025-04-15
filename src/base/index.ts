@@ -1,4 +1,9 @@
-import type { AgentFunction, ChatOptions, ResponseTypeForOptions, StreamChunkTypeForOptions } from '../types'
+import type {
+  AgentFunctionSchema,
+  ChatOptions,
+  ResponseTypeForOptions,
+  StreamChunkTypeForOptions,
+} from '../types'
 
 /**
  * BaseModel 抽象类
@@ -54,7 +59,7 @@ export abstract class BaseModel {
    * @param tools 统一格式的工具定义列表
    * @returns 模型特定格式的工具定义
    */
-  convertToolsFormat(tools: AgentFunction[]): any {
+  convertToolsFormat(tools: AgentFunctionSchema[]): any {
     // 默认实现返回基本工具结构
     // 具体模型可以覆盖此方法实现特定的转换逻辑
     return tools.map(tool => ({

@@ -1,3 +1,4 @@
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { AgentCallback, AgentFunction, FunctionCall } from '../types'
 
 /**
@@ -16,6 +17,7 @@ export class FunctionCallExecutor {
     functionCalls: FunctionCall[],
     functions: AgentFunction[],
     callback?: AgentCallback,
+    mcpClient?: Client,
   ): Promise<FunctionCall[]> {
     const results: FunctionCall[] = []
 
@@ -30,8 +32,17 @@ export class FunctionCallExecutor {
           // 复制函数调用对象，添加执行结果
           const resultCall = { ...call }
 
-          // 执行函数
-          resultCall.result = await func.executor(call.arguments)
+          if (func.executor) {
+            // 执行函数
+            resultCall.result = await func.executor(call.arguments)
+          }
+          else {
+            // 执行函数
+            resultCall.result = await mcpClient?.callTool({
+              name: func.name,
+              arguments: call.arguments,
+            })
+          }
           results.push(resultCall)
         }
         catch (error: any) {

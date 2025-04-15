@@ -1,3 +1,4 @@
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { BaseModel } from '../base'
 import type {
   AgentCallback,
@@ -51,6 +52,7 @@ export class FunctionCallProcessor {
     depth = 0,
     callback?: AgentCallback,
     options?: T,
+    mcpClient?: Client,
   ): Promise<EnhancedChatResponse<T extends { responseFormat: ResponseFormat.JSON } ? ResponseFormat.JSON : ResponseFormat.TEXT>> {
     if (depth === 0) {
       // 通知递归处理开始
@@ -110,7 +112,7 @@ export class FunctionCallProcessor {
     }
 
     // 执行函数调用
-    const executedCalls = await FunctionCallExecutor.executeFunctionCalls(functionCalls, functions, callback)
+    const executedCalls = await FunctionCallExecutor.executeFunctionCalls(functionCalls, functions, callback, mcpClient)
 
     // 生成函数结果摘要
     const resultsSummary = executedCalls.map(call =>
@@ -179,6 +181,7 @@ ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in v
       depth + 1,
       callback,
       options,
+
     )
 
     // 合并函数调用链

@@ -5,7 +5,7 @@ import type {
   SafetySetting,
 } from '@google/genai'
 import type {
-  AgentFunction,
+  AgentFunctionSchema,
   ChatMessage,
   ChatOptions,
   ResponseTypeForOptions,
@@ -91,7 +91,7 @@ export class GeminiModel extends BaseModel {
    * @param tools 统一格式的工具定义列表
    * @returns Gemini特定格式的工具定义
    */
-  convertToolsFormat(tools: AgentFunction[]): any {
+  convertToolsFormat(tools: AgentFunctionSchema[]): any {
     if (!tools || tools.length === 0) {
       return undefined
     }

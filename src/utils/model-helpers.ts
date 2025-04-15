@@ -1,5 +1,5 @@
 import type { BaseModel } from '../base'
-import type { AgentFunction, ChatMessage, ChatOptions } from '../types'
+import type { AgentFunctionSchema, ChatMessage, ChatOptions } from '../types'
 import { ChatRole } from '../types'
 
 /**
@@ -13,13 +13,13 @@ export class ModelHelpers {
    * @param model 模型实例
    * @returns 模型特定格式的工具或null（如果不支持）
    */
-  static convertToolsForModel(tools: AgentFunction[], model: BaseModel, options?: ChatOptions): any {
+  static convertToolsForModel(tools: AgentFunctionSchema[], model: BaseModel, options?: ChatOptions): any {
     if (!tools || tools.length === 0) {
-      return null
+      return undefined
     }
 
     if (!model.supportsTools(options?.model)) {
-      return null
+      return undefined
     }
 
     // 使用模型自己的转换方法
@@ -32,7 +32,7 @@ export class ModelHelpers {
    * @param tools 工具定义
    * @returns 增强后的提示
    */
-  static enhanceContentWithTools(content: string, tools: AgentFunction[]): string {
+  static enhanceContentWithTools(content: string, tools: AgentFunctionSchema[]): string {
     if (!tools || tools.length === 0) {
       return content
     }
@@ -162,7 +162,7 @@ Please only use these exact function call formats. Do not invent other formats o
   static prepareOptionsForModel<T extends ChatOptions | undefined = undefined>(
     options: T | undefined,
     model: BaseModel,
-    functions: AgentFunction[] = [],
+    functions: AgentFunctionSchema[] = [],
   ): T {
     if (!options) {
       return options as T
@@ -172,17 +172,10 @@ Please only use these exact function call formats. Do not invent other formats o
     const enhancedOptions = { ...options } as any
 
     // 处理工具
-    if (functions && functions.length > 0) {
-      const toolsForModel = this.convertToolsForModel(functions, model, options)
-      if (toolsForModel) {
-        enhancedOptions.tools = toolsForModel
-      }
-    }
+    enhancedOptions.tools = this.convertToolsForModel(functions, model, options)
 
     // 处理历史消息中的系统消息
-    if (enhancedOptions.history && enhancedOptions.history.length > 0) {
-      enhancedOptions.history = this.processSystemMessages(enhancedOptions.history, model, options)
-    }
+    enhancedOptions.history = this.processSystemMessages(enhancedOptions.history, model, options)
 
     return enhancedOptions as T
   }

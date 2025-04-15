@@ -1,7 +1,9 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { z } from 'zod'
 import type {
   AgentCallback,
   AgentFunction,
+  AgentFunctionSchema,
   ChatOptions,
   ChatResponse,
   FunctionCall,
@@ -9,6 +11,7 @@ import type {
   StreamChunkTypeForOptions,
   UnifiedAIOptions,
 } from '../types'
+import zodToJsonSchema from 'zod-to-json-schema'
 import { BaseModel } from '../base'
 import { ResponseFormat } from '../types'
 import {
@@ -78,6 +81,36 @@ export class UnifiedAI extends BaseModel {
     return this
   }
 
+  async getMcpTools(): Promise<AgentFunction[]> {
+    const toolsResponse = await this.mcpClient?.listTools()
+    return toolsResponse?.tools?.map(tool => ({
+      name: tool.name,
+      description: tool.description || '',
+      parameters: tool.inputSchema as unknown as z.ZodObject<any>,
+    })) || []
+  }
+
+  async getAllTools(): Promise<AgentFunctionSchema[]> {
+    const tools = [...this.functions, ...(await this.getMcpTools())]
+    return tools.map((tool) => {
+      const parameters = zodToJsonSchema(tool.parameters, {
+        strictUnions: true,
+      })
+      delete parameters.$schema
+      delete (parameters as any).additionalProperties
+      return {
+        name: tool.name,
+        description: tool.description || '',
+        parameters,
+        executor: tool.executor,
+      }
+    })
+  }
+
+  getModel(model?: string): string {
+    return model || this.baseModel.getDefaultModel()
+  }
+
   /**
    * 统一接口：发送聊天消息并获取响应
    * @param prompt 提示/消息内容
@@ -103,16 +136,18 @@ export class UnifiedAI extends BaseModel {
       // 检查是否需要增强提示
       let enhancedPrompt = prompt
 
+      const tools = await this.getAllTools()
+
       // 准备选项，添加工具信息
       const enhancedOptions = ModelHelpers.prepareOptionsForModel(
         options,
         this.baseModel,
-        this.functions,
+        tools,
       )
 
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools(options?.model) && this.functions.length > 0) {
-        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
+      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && this.functions.length > 0) {
+        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, tools)
       }
 
       // 调用基础模型
@@ -189,23 +224,25 @@ export class UnifiedAI extends BaseModel {
       // 检查是否需要增强提示
       let enhancedPrompt = prompt
 
+      const tools = await this.getAllTools()
+
       // 准备选项，添加工具信息
       const enhancedOptions = ModelHelpers.prepareOptionsForModel(
         options,
         this.baseModel,
-        this.functions,
+        tools,
       )
 
       // 如果模型不支持工具，使用提示增强
-      if (!this.baseModel.supportsTools() && this.functions.length > 0) {
-        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, this.functions)
+      if (!this.baseModel.supportsTools(this.getModel(options?.model)) && this.functions.length > 0) {
+        enhancedPrompt = ModelHelpers.enhanceContentWithTools(prompt, tools)
       }
       // 流式获取响应
       let fullContent = ''
       let lastChunk = {
         content: '',
         isLast: false,
-        model: options?.model || this.baseModel.getDefaultModel(),
+        model: this.getModel(options?.model),
         isJsonResponse: false,
       } as StreamChunkTypeForOptions<T>
 
@@ -328,16 +365,9 @@ export class UnifiedAI extends BaseModel {
                 isJsonResponse = true
               }
               catch {
-                // 解析失败，尝试修复
-                try {
-                  finalContent = JsonHelper.safeParseJson(contentStr)
-                  isJsonResponse = true
-                }
-                catch (e: any) {
-                  // 如果解析仍失败，保留原样
-                  finalContent = `\n\nFinal result (JSON parsing failed):\n${contentStr}`
-                  console.error(`无法解析或修复JSON响应: ${e.message}`)
-                }
+                // 如果解析仍失败，保留原样
+                finalContent = `\n\nFinal result (JSON parsing failed):\n${contentStr}`
+                console.error(`无法解析或修复JSON响应`)
               }
             }
             else if (!isJsonResponse) {
