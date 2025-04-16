@@ -89,6 +89,7 @@ class AiSocketService {
             }
           }
 
+          console.log('开始生成回复...')
           const generator = aiService.chatStream(prompt, { model, callback })
           let isCompleted = false
 

@@ -1,5 +1,4 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { z } from 'zod'
 import type {
   AgentCallback,
   AgentFunction,
@@ -11,6 +10,7 @@ import type {
   StreamChunkTypeForOptions,
   UnifiedAIOptions,
 } from '../types'
+import { z } from 'zod'
 import zodToJsonSchema from 'zod-to-json-schema'
 import { BaseModel } from '../base'
 import { ResponseFormat } from '../types'
@@ -94,11 +94,12 @@ export class UnifiedAI extends BaseModel {
     const tools = [...this.functions, ...(await this.getMcpTools())]
     return tools.map((tool) => {
       let parameters: Record<string, any> = {}
-      if (tool.parameters instanceof z.ZodObject) {
+      if (tool.parameters instanceof z.ZodType) {
         parameters = zodToJsonSchema(tool.parameters, {
           strictUnions: true,
         })
-      } else {
+      }
+      else {
         parameters = tool.parameters
       }
       delete (parameters as any).$schema
@@ -141,9 +142,9 @@ export class UnifiedAI extends BaseModel {
       if (tools.length > 0) {
         prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself.'
 
-      if (options?.responseFormat === ResponseFormat.JSON) {
-        prompt += '\n\nIf you need to use tools, ignore the JSON format requirement above.'
-      }
+        if (options?.responseFormat === ResponseFormat.JSON) {
+          prompt += '\n\nIf you need to use tools, ignore the JSON format requirement above.'
+        }
       }
       // 检查是否需要增强提示
       let enhancedPrompt = prompt
@@ -323,19 +324,19 @@ export class UnifiedAI extends BaseModel {
             `Function: ${call.name}\nParameters: ${JSON.stringify(call.arguments)}\nResult: ${JSON.stringify(call.result)}`,
           ).join('\n\n')
 
-          const processingChunk = {
-            content: `\n\nProcessing function calls...\n` as any,
-            isJsonResponse: false as any,
-            isLast: false,
-            model: lastChunk.model,
-            functionCalls: allFunctionCalls, // 附加所有函数调用信息
-          } as StreamChunkTypeForOptions<T>
+          // const processingChunk = {
+          //   content: `\n\nProcessing function calls...\n` as any,
+          //   isJsonResponse: false as any,
+          //   isLast: false,
+          //   model: lastChunk.model,
+          //   functionCalls: allFunctionCalls, // 附加所有函数调用信息
+          // } as StreamChunkTypeForOptions<T>
 
-          // 通知接收到响应块
-          callback?.('response_chunk', { chunk: processingChunk })
+          // // 通知接收到响应块
+          // callback?.('response_chunk', { chunk: processingChunk })
 
-          // 告知用户正在处理函数调用
-          yield processingChunk
+          // // 告知用户正在处理函数调用
+          // yield processingChunk
 
           // 将当前响应内容处理为字符串
           const currentResponseContent = typeof currentResponse.content === 'object'
@@ -376,13 +377,13 @@ export class UnifiedAI extends BaseModel {
               }
               catch {
                 // 如果解析仍失败，保留原样
-                finalContent = `\n\nFinal result (JSON parsing failed):\n${contentStr}`
+                finalContent = `${contentStr}`
                 console.error(`无法解析或修复JSON响应`)
               }
             }
             else if (!isJsonResponse) {
               // 不是JSON响应，添加前缀
-              finalContent = `\n\nFinal result:\n${finalContent}`
+              finalContent = `${finalContent}`
             }
 
             const finalChunk = {

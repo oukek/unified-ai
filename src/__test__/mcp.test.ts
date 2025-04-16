@@ -1,14 +1,15 @@
+import type { AgentCallback } from '../types'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { z } from 'zod'
 import { GeminiModel } from '../models/gemini'
 import { UnifiedAI } from '../models/unified'
-import { AgentCallback, ResponseFormat } from '../types'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import 'dotenv/config'
+import { ResponseFormat } from '../types'
 import { CustomModel } from './customModel'
+import 'dotenv/config'
 
 // 使用通过 npm 安装的 @modelcontextprotocol/server-filesystem 服务
-describe('MCP with filesystem tests', () => {
+describe('mCP with filesystem tests', () => {
   let unifiedAI: UnifiedAI
   let mcpClient: Client
   let cleanup: () => Promise<void>
@@ -20,27 +21,27 @@ describe('MCP with filesystem tests', () => {
       const baseModel = new CustomModel({
         apiKey: process.env.GEMINI_API_KEY ?? '',
       })
-      
+
       // 创建UnifiedAI实例
       unifiedAI = new UnifiedAI(baseModel, {
         autoExecuteFunctions: true,
         maxRecursionDepth: 5,
       })
-      
+
       // 创建MCP客户端
       mcpClient = new Client({ name: 'test-client', version: '1.0.0' })
       const transport = new StdioClientTransport({
         command: 'npx',
         args: [
-          "-y",
-          "@modelcontextprotocol/server-filesystem",
-          "/Users/codebear/okew/unifiedAI/src/__test__",
+          '-y',
+          '@modelcontextprotocol/server-filesystem',
+          '/Users/codebear/okew/unifiedAI/src/__test__',
         ],
       })
-      
+
       // 连接到传输层
       await mcpClient.connect(transport)
-      
+
       // 将MCP客户端添加到UnifiedAI
       unifiedAI.useMcp(mcpClient)
 
@@ -57,7 +58,7 @@ describe('MCP with filesystem tests', () => {
         },
       })
 
-        // 创建回调函数
+      // 创建回调函数
       agentCallback = jest.fn((state, data) => {
         const timestamp = new Date().toISOString()
 
@@ -88,7 +89,7 @@ describe('MCP with filesystem tests', () => {
             break
         }
       })
-      
+
       // 设置清理函数
       cleanup = async () => {
         await mcpClient.close()
@@ -111,11 +112,11 @@ describe('MCP with filesystem tests', () => {
 
     const response = await unifiedAI.unifiedChat(prompt, undefined, agentCallback)
     console.log('MCP Response:', response.content)
-    
+
     // 验证响应中包含了文件内容
     expect(response.content).toContain('test.txt')
     expect(typeof response.content).toBe('string')
-    
+
     // 验证响应中包含数字（文件内容）
     const responseText = response.content as string
     const containsNumber = /\d+/.test(responseText)

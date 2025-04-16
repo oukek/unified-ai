@@ -1,11 +1,24 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { socketService, api } from '@/utils'
+import { marked } from 'marked'
 
 interface FunctionCall {
   name: string
   arguments: any
   result?: any
+  position?: number
+  contentBefore?: string
+  contentAfter?: string
+  id?: string
+  showDetails?: boolean
+  completed?: boolean
+}
+
+interface MessageSegment {
+  type: 'text' | 'function'
+  content: string
+  functionCall?: FunctionCall
 }
 
 interface Message {
@@ -16,6 +29,7 @@ interface Message {
   functionCalls?: FunctionCall[]
   showFunctions?: boolean
   model?: string
+  segments?: MessageSegment[]
 }
 
 // 聊天消息
@@ -26,6 +40,8 @@ const userInput = ref('')
 const loading = ref(false)
 // 错误消息
 const error = ref('')
+// 错误消息定时器
+const errorTimer = ref<number | null>(null)
 // 当前选中的模型
 const selectedModel = ref('gemini-2.0-flash')
 // 打字机效果控制
@@ -54,6 +70,42 @@ const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2)
 }
 
+// 处理多余的换行符，将连续的换行符替换为单个换行符
+const normalizeNewlines = (text: string): string => {
+  // 使用更强的正则替换多余换行
+  // return text.replace(/\n{2,}/g, '\n');
+  return text;
+}
+
+// 安全地使用marked渲染markdown
+const renderMarkdown = (text: string) => {
+  try {
+    // 处理多余的换行符
+    const normalizedText = normalizeNewlines(text);
+    return marked.parse(normalizedText);
+  } catch (e) {
+    console.error('Markdown渲染失败:', e);
+    return text;
+  }
+}
+
+// 文本缓冲区 - 用于收集完整段落
+const textBuffer = ref('')
+// 是否正在收集段落标志
+const isCollectingParagraph = ref(false)
+// 段落收集定时器
+const paragraphTimer = ref<number | null>(null)
+
+// 重置缓冲区
+const resetBuffer = () => {
+  textBuffer.value = ''
+  isCollectingParagraph.value = false
+  if (paragraphTimer.value) {
+    clearTimeout(paragraphTimer.value)
+    paragraphTimer.value = null
+  }
+}
+
 // 打字机效果函数
 const startTypingEffect = (messageId: string, text: string) => {
   // 清除之前的定时器
@@ -64,13 +116,19 @@ const startTypingEffect = (messageId: string, text: string) => {
   // 找到消息并设置初始文本为空
   const message = messages.value.find(m => m.id === messageId)
   if (message) {
-    message.content = ''
+    // 仅当是新消息时才重置内容，否则保留现有内容并追加
+    if (!message.content || message.content === '') {
+      message.content = ''
+    }
   }
+
+  // 处理多余的换行符
+  const normalizedText = normalizeNewlines(text)
 
   // 设置打字机状态
   typing.value = {
     messageId,
-    text,
+    text: normalizedText,
     index: 0,
     timer: null
   }
@@ -91,6 +149,21 @@ const startTypingEffect = (messageId: string, text: string) => {
       if (typing.value.index < typing.value.text.length) {
         message.content += typing.value.text[typing.value.index]
         typing.value.index++
+
+        // 更新函数调用后的内容
+        if (message.functionCalls && message.functionCalls.length > 0) {
+          message.functionCalls.forEach(fc => {
+            if (fc.position !== undefined && fc.contentBefore) {
+              if (message.content.length > fc.contentBefore.length) {
+                fc.contentAfter = message.content.substring(fc.contentBefore.length)
+              }
+            }
+          })
+        }
+
+        // 更新分段内容
+        updateMessageSegments(message)
+
         scrollToBottom()
       } else {
         // 完成打字
@@ -101,11 +174,41 @@ const startTypingEffect = (messageId: string, text: string) => {
   }
 }
 
-// 切换函数调用详情显示
-const toggleFunctionDetails = (message: Message) => {
-  if (message.functionCalls && message.functionCalls.length > 0) {
-    message.showFunctions = !message.showFunctions
+// 切换特定函数调用的显示/隐藏状态
+const toggleFunction = (functionId: string) => {
+  if (messages.value) {
+    messages.value.forEach(message => {
+      if (message.functionCalls) {
+        message.functionCalls.forEach(fc => {
+          if (fc.id === functionId) {
+            fc.showDetails = !fc.showDetails
+          }
+        })
+      }
+    })
   }
+}
+
+// 清除错误消息定时器
+const clearErrorTimer = () => {
+  if (errorTimer.value) {
+    clearTimeout(errorTimer.value)
+    errorTimer.value = null
+  }
+}
+
+// 显示错误消息
+const showError = (message: string) => {
+  error.value = message
+
+  // 清除之前的定时器
+  clearErrorTimer()
+
+  // 设置新的定时器，5秒后自动清除错误消息
+  errorTimer.value = window.setTimeout(() => {
+    error.value = ''
+    errorTimer.value = null
+  }, 5000)
 }
 
 // 发送消息到服务器
@@ -128,13 +231,14 @@ const sendMessage = () => {
     content: '',
     loading: true,
     functionCalls: [],
-    showFunctions: true
+    showFunctions: false
   }
   messages.value.push(assistantMessage)
 
   // 清空输入并滚动到底部
   loading.value = true
   error.value = ''
+  clearErrorTimer() // 清除可能存在的错误定时器
   scrollToBottom()
 
   // 发送消息到服务器
@@ -190,15 +294,34 @@ const saveApiKey = async () => {
       apiKey.value = ''
       closeSettings()
     } else {
-      error.value = data.error || '设置API密钥失败'
+      showError(data.error || '设置API密钥失败')
     }
   } catch (err) {
     console.error('设置API密钥失败:', err)
-    error.value = '设置API密钥失败'
+    showError('设置API密钥失败')
   } finally {
     settingsLoading.value = false
   }
 }
+
+// 输入框自动调整大小
+const resizeTextarea = (event: Event) => {
+  const textarea = event.target as HTMLTextAreaElement
+
+  // 重置高度以便重新计算
+  textarea.style.height = 'auto'
+
+  // 计算新高度，但设置最大行数限制
+  const lineHeight = parseInt(getComputedStyle(textarea).lineHeight)
+  const maxHeight = lineHeight * 4 // 最多显示4行
+
+  // 计算实际高度并应用限制
+  const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+  textarea.style.height = `${newHeight}px`
+}
+
+// 是否启用打字机效果
+const enableTypingEffect = ref(false)
 
 onMounted(() => {
   // 连接到WebSocket服务
@@ -212,14 +335,81 @@ onMounted(() => {
     console.log('AI开始生成回复')
   })
 
-  // 监听错误
-  socketService.on('ai:error', (data) => {
-    error.value = data.message || '发生错误'
-    loading.value = false
+  // 监听流式回复片段
+  socketService.on('ai:chunk', (data) => {
+    if (messages.value.length > 0) {
+      const lastMessage = messages.value[messages.value.length - 1]
+      if (lastMessage.role === 'assistant') {
+        // 获取处理后的文本
+        const content = data.content
 
-    // 移除加载中的消息
-    if (messages.value.length > 0 && messages.value[messages.value.length - 1].loading) {
-      messages.value.pop()
+        // 避免处理空内容
+        if (!content || content.trim() === '') {
+          return;
+        }
+
+        // 禁用打字机效果，直接更新内容
+        if (!enableTypingEffect.value) {
+          // 直接更新内容，不使用打字机效果
+          lastMessage.content += content
+
+          // 如果有函数调用，则更新函数调用后的内容
+          if (lastMessage.functionCalls && lastMessage.functionCalls.length > 0) {
+            lastMessage.functionCalls.forEach(fc => {
+              if (fc.position !== undefined && fc.contentBefore) {
+                if (lastMessage.content.length > fc.contentBefore.length) {
+                  fc.contentAfter = lastMessage.content.substring(fc.contentBefore.length)
+                }
+              }
+            })
+          }
+
+          // 如果不是最后一个块，更新分段内容
+          if (!data.isLast) {
+            updateMessageSegments(lastMessage)
+          }
+        } else {
+          // 将文本加入缓冲区，只有在启用打字机效果时才需要
+          textBuffer.value += content
+
+          // 使用缓冲区和打字机效果的原有逻辑
+          const isEndOfSentence = content.match(/[.!?。！？]\s*$/) !== null
+
+          if (isEndOfSentence) {
+            isCollectingParagraph.value = true
+
+            if (paragraphTimer.value) {
+              clearTimeout(paragraphTimer.value)
+            }
+
+            paragraphTimer.value = window.setTimeout(() => {
+              if (typing.value && typing.value.messageId === lastMessage.id) {
+                typing.value.text += textBuffer.value
+              } else {
+                startTypingEffect(lastMessage.id, textBuffer.value)
+              }
+
+              resetBuffer()
+
+              lastMessage.loading = false
+              lastMessage.model = data.model
+              scrollToBottom()
+            }, 200)
+          } else if (!isCollectingParagraph.value) {
+            if (!typing.value) {
+              startTypingEffect(lastMessage.id, textBuffer.value)
+              resetBuffer()
+            } else {
+              typing.value.text += textBuffer.value
+              resetBuffer()
+            }
+          }
+        }
+
+        lastMessage.loading = false
+        lastMessage.model = data.model
+        scrollToBottom()
+      }
     }
   })
 
@@ -228,9 +418,45 @@ onMounted(() => {
     if (messages.value.length > 0) {
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage.role === 'assistant') {
-        // 更新函数调用信息
-        lastMessage.functionCalls = data.functionCalls
-        lastMessage.showFunctions = true
+        // 如果正在收集段落，先结束当前段落
+        if (isCollectingParagraph.value && textBuffer.value) {
+          // 将缓冲区内容添加到消息内容
+          if (typing.value && typing.value.messageId === lastMessage.id) {
+            typing.value.text += textBuffer.value
+          } else {
+            lastMessage.content += textBuffer.value
+          }
+          resetBuffer()
+        }
+
+        // 计算函数调用的位置，默认为当前内容长度（即追加到末尾）
+        const currentPosition = lastMessage.content ? lastMessage.content.length : 0
+
+        // 处理每个新的函数调用
+        if (data.functionCalls && data.functionCalls.length > 0) {
+          // 为每个新函数调用生成唯一ID和位置信息
+          const newFunctionCalls = data.functionCalls.map((fc: FunctionCall) => {
+            return {
+              ...fc,
+              id: generateId(),
+              position: currentPosition,
+              contentBefore: lastMessage.content || '',
+              contentAfter: '',
+              showDetails: false,
+              completed: false
+            }
+          })
+
+          // 如果已有函数调用，则合并；否则直接赋值
+          if (lastMessage.functionCalls && lastMessage.functionCalls.length > 0) {
+            lastMessage.functionCalls = [...lastMessage.functionCalls, ...newFunctionCalls]
+          } else {
+            lastMessage.functionCalls = newFunctionCalls
+          }
+        }
+
+        // 更新分段内容
+        updateMessageSegments(lastMessage)
         scrollToBottom()
       }
     }
@@ -240,35 +466,38 @@ onMounted(() => {
   socketService.on('ai:function_call_end', (data) => {
     if (messages.value.length > 0) {
       const lastMessage = messages.value[messages.value.length - 1]
-      if (lastMessage.role === 'assistant') {
-        // 更新函数调用结果
-        lastMessage.functionCalls = data.functionCalls
-        scrollToBottom()
-      }
-    }
-  })
+      if (lastMessage.role === 'assistant' && data.functionCalls && data.functionCalls.length > 0) {
+        // 尝试匹配每个返回的函数调用结果与现有的函数调用
+        data.functionCalls.forEach((resultFC: FunctionCall) => {
+          // 查找对应的函数调用
+          if (lastMessage.functionCalls) {
+            // 先查找名称和参数都匹配的未完成函数调用
+            const matchedFC = lastMessage.functionCalls.find(fc =>
+              fc.name === resultFC.name &&
+              !fc.completed &&
+              JSON.stringify(fc.arguments) === JSON.stringify(resultFC.arguments)
+            )
 
-  // 监听流式回复片段
-  socketService.on('ai:chunk', (data) => {
-    if (messages.value.length > 0) {
-      const lastMessage = messages.value[messages.value.length - 1]
-      if (lastMessage.role === 'assistant') {
-        // 更新消息内容（不使用打字机效果时）
-        if (!typing.value) {
-          lastMessage.content += data.content
-        } else {
-          // 正在使用打字机效果，更新文本但不直接显示
-          typing.value.text += data.content
-        }
+            if (matchedFC) {
+              // 更新结果和完成状态
+              matchedFC.result = resultFC.result
+              matchedFC.completed = true
+            } else {
+              // 如果找不到精确匹配，则添加为新的函数调用（通常不应该发生）
+              const newFC = {
+                ...resultFC,
+                id: generateId(),
+                position: lastMessage.content.length,
+                showDetails: false,
+                completed: true
+              }
+              lastMessage.functionCalls.push(newFC)
+            }
+          }
+        })
 
-        lastMessage.loading = false
-        lastMessage.model = data.model
-
-        // 如果是第一个块，开始打字机效果
-        if (!typing.value && lastMessage.content === data.content) {
-          startTypingEffect(lastMessage.id, data.content)
-        }
-
+        // 更新分段内容
+        updateMessageSegments(lastMessage)
         scrollToBottom()
       }
     }
@@ -276,27 +505,108 @@ onMounted(() => {
 
   // 监听回复结束
   socketService.on('ai:end', (data) => {
+    console.log('AI回复结束:', data);
     loading.value = false
 
-    // 收起函数调用面板（消息完成后）
+    // 处理最后一条消息
     if (messages.value.length > 0) {
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage.role === 'assistant') {
-        setTimeout(() => {
-          lastMessage.showFunctions = false
-        }, 1000)
+        // 设置消息的模型信息
+        if (data && data.model && !lastMessage.model) {
+          lastMessage.model = data.model
+        }
+
+        // 处理缓冲区最后的内容 - 仅在启用打字机效果时才处理缓冲区
+        if (enableTypingEffect.value && textBuffer.value && textBuffer.value.trim()) {
+          if (typing.value) {
+            typing.value.text += textBuffer.value
+          }
+          resetBuffer() // 重置缓冲区
+        } else if (!enableTypingEffect.value) {
+          // 在非打字机模式下，确保最后更新一次分段内容
+          updateMessageSegments(lastMessage)
+          // 清空缓冲区，防止潜在的重复
+          resetBuffer()
+        }
       }
     }
 
     scrollToBottom()
   })
+
+  // 监听错误
+  socketService.on('ai:error', (data) => {
+    showError(data.message || '发生错误')
+    loading.value = false
+
+    // 移除加载中的消息
+    if (messages.value.length > 0 && messages.value[messages.value.length - 1].loading) {
+      messages.value.pop()
+    }
+  })
 })
+
+// 将消息按函数调用位置分段
+const updateMessageSegments = (message: Message) => {
+  if (!message.content || !message.functionCalls || message.functionCalls.length === 0) {
+    // 如果没有函数调用，则创建单个文本段
+    message.segments = [
+      { type: 'text', content: message.content || '' }
+    ]
+    return
+  }
+
+  // 按位置排序函数调用
+  const sortedCalls = [...message.functionCalls].sort((a, b) => {
+    return (a.position || 0) - (b.position || 0)
+  })
+
+  const segments: MessageSegment[] = []
+  let lastEndIndex = 0
+
+  // 遍历排序后的函数调用
+  sortedCalls.forEach(call => {
+    const position = call.position || 0
+
+    // 如果函数调用前有文本，添加文本段
+    if (position > lastEndIndex) {
+      segments.push({
+        type: 'text',
+        content: message.content.substring(lastEndIndex, position)
+      })
+    }
+
+    // 添加函数调用段
+    segments.push({
+      type: 'function',
+      content: '',
+      functionCall: call
+    })
+
+    // 更新最后处理位置为函数调用位置
+    lastEndIndex = position
+  })
+
+  // 如果最后还有文本，添加最后的文本段
+  if (lastEndIndex < message.content.length) {
+    segments.push({
+      type: 'text',
+      content: message.content.substring(lastEndIndex)
+    })
+  }
+
+  message.segments = segments
+}
 
 onUnmounted(() => {
   // 清理打字机定时器
   if (typing.value && typing.value.timer) {
     clearInterval(typing.value.timer)
   }
+
+  // 清理错误定时器
+  clearErrorTimer()
 
   // 清理Socket监听器
   socketService.off('ai:start')
@@ -343,7 +653,7 @@ onUnmounted(() => {
         <div v-if="messages.length === 0" class="welcome-container">
           <div class="welcome-box">
             <h1>UnifiedAI 聊天</h1>
-            <p>这是一个基于Gemini的AI聊天应用</p>
+            <p>这是一个基于 UnifiedAI 的AI聊天应用</p>
           </div>
         </div>
 
@@ -358,32 +668,6 @@ onUnmounted(() => {
               <div v-else class="avatar assistant-avatar">A</div>
             </div>
             <div class="message-content">
-              <!-- 函数调用展示区域 -->
-              <div v-if="message.functionCalls && message.functionCalls.length > 0 && message.showFunctions"
-                   class="function-calls">
-                <div class="function-calls-header" @click="toggleFunctionDetails(message)">
-                  <span>AI 正在思考...</span>
-                  <span class="toggle-icon">{{ message.showFunctions ? '▼' : '▶' }}</span>
-                </div>
-                <div v-if="message.showFunctions" class="function-calls-list">
-                  <div v-for="(funcCall, index) in message.functionCalls"
-                       :key="index"
-                       class="function-call-item">
-                    <div class="function-name">
-                      <span class="function-icon">🔧</span>
-                      <span>{{ funcCall.name }}</span>
-                    </div>
-                    <div class="function-args">
-                      <pre>{{ JSON.stringify(funcCall.arguments, null, 2) }}</pre>
-                    </div>
-                    <div v-if="funcCall.result" class="function-result">
-                      <div class="result-label">结果:</div>
-                      <pre>{{ JSON.stringify(funcCall.result, null, 2) }}</pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <!-- 加载指示器 -->
               <p v-if="message.loading" class="loading-indicator">
                 <span class="dot"></span>
@@ -391,8 +675,64 @@ onUnmounted(() => {
                 <span class="dot"></span>
               </p>
 
-              <!-- 消息内容 -->
-              <p v-else class="message-text">{{ message.content }}</p>
+              <!-- 用户消息直接显示内容，不使用分段 -->
+              <div v-else-if="message.role === 'user'" class="user-message-text">
+                {{ message.content }}
+              </div>
+
+              <!-- 助手回复使用分段显示 -->
+              <div v-else class="segmented-content">
+                <template v-for="(segment, index) in message.segments" :key="index">
+                  <!-- 文本段 -->
+                  <div v-if="segment.type === 'text'"
+                       class="text-segment"
+                       v-html="renderMarkdown(segment.content)"></div>
+
+                  <!-- 函数调用段 -->
+                  <div v-else-if="segment.type === 'function' && segment.functionCall"
+                       class="function-segment">
+                    <div class="function-calls-container">
+                      <div class="function-calls-toggle"
+                           @click="segment.functionCall.showDetails = !segment.functionCall.showDetails">
+                        <span class="function-badge">
+                          <span class="function-icon">🔧</span>
+                          {{ segment.functionCall.name }}
+                        </span>
+                        <span class="toggle-icon">{{ segment.functionCall.showDetails ? '▼' : '▶' }}</span>
+                      </div>
+
+                      <div v-if="segment.functionCall.showDetails" class="function-calls">
+                        <div class="function-calls-list">
+                          <div class="function-call-item">
+                            <div class="function-name">
+                              <span>工具调用: {{ segment.functionCall.name }}</span>
+                            </div>
+                            <div class="function-args">
+                              <div class="args-label">参数:</div>
+                              <pre>{{ JSON.stringify(segment.functionCall.arguments, null, 2) }}</pre>
+                            </div>
+                            <div v-if="segment.functionCall.result" class="function-result">
+                              <div class="result-label">结果:</div>
+                              <div class="result-content"
+                                   v-html="renderMarkdown(typeof segment.functionCall.result === 'string' ?
+                                                         segment.functionCall.result :
+                                                         JSON.stringify(segment.functionCall.result, null, 2))"></div>
+                            </div>
+                            <div v-else-if="segment.functionCall.completed === false" class="function-waiting">
+                              <div class="waiting-label">等待结果...</div>
+                              <div class="waiting-indicator">
+                                <span class="small-dot"></span>
+                                <span class="small-dot"></span>
+                                <span class="small-dot"></span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
 
               <!-- 模型信息 -->
               <div v-if="message.model && !message.loading" class="model-info">
@@ -410,11 +750,27 @@ onUnmounted(() => {
 
       <!-- 输入框区域 -->
       <div class="input-container">
+        <div class="input-options">
+          <label class="option-label">
+            <input type="checkbox" v-model="enableTypingEffect">
+            <span>打字机效果</span>
+          </label>
+        </div>
         <div class="input-box">
           <textarea
             v-model="userInput"
             placeholder="输入消息..."
-            @keydown.enter.prevent="sendMessage"
+            @keydown.enter="(event) => {
+              if (event.shiftKey) {
+                // Shift+Enter 时不阻止默认行为，允许换行
+                return;
+              } else {
+                // 仅 Enter 键时阻止默认行为并发送消息
+                event.preventDefault();
+                sendMessage();
+              }
+            }"
+            @input="resizeTextarea"
             :disabled="loading"
             rows="1"
           ></textarea>
@@ -634,77 +990,66 @@ onUnmounted(() => {
 
 .message-content {
   flex: 1;
-  max-width: 800px;
   line-height: 1.5;
   width: 100%;
 }
 
-.message-text {
-  white-space: pre-wrap;
-}
-
-.loading-indicator {
+.segmented-content {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  width: 100%;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #888;
-  animation: pulse 1.5s infinite ease-in-out;
+.text-segment {
+  margin-bottom: 0.5em;
 }
 
-.dot:nth-child(2) {
-  animation-delay: 0.5s;
+.text-segment:last-child {
+  margin-bottom: 0;
 }
 
-.dot:nth-child(3) {
-  animation-delay: 1s;
+.function-segment {
+  margin: 0;
+  width: 100%;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.function-calls {
-  margin-bottom: 15px;
-  background-color: #f0f0f5;
+.function-calls-container {
+  margin: 4px 0;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #e0e0e5;
+  background-color: #f8f8fa;
 }
 
-.function-calls-header {
-  background-color: #e0e0e5;
+.function-calls-toggle {
+  background-color: #f0f0f5;
   padding: 8px 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
   font-weight: 500;
+  font-size: 0.9rem;
+  color: #555;
+  border-bottom: 1px solid #e0e0e5;
 }
 
-.toggle-icon {
-  font-size: 12px;
+.function-calls {
+  background-color: #f7f7f9;
+  border-radius: 0 0 8px 8px;
 }
 
 .function-calls-list {
   padding: 12px;
   max-height: 300px;
   overflow-y: auto;
+  font-size: 0.85rem;
 }
 
 .function-call-item {
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px dashed #ccc;
+  border-bottom: 1px dashed #ddd;
 }
 
 .function-call-item:last-child {
@@ -718,6 +1063,7 @@ onUnmounted(() => {
   margin-bottom: 8px;
   display: flex;
   align-items: center;
+  font-size: 0.9rem;
 }
 
 .function-icon {
@@ -730,17 +1076,25 @@ onUnmounted(() => {
   padding: 8px;
   margin-bottom: 8px;
   overflow-x: auto;
+  font-size: 0.8rem;
 }
 
 .function-args pre, .function-result pre {
   margin: 0;
-  font-size: 12px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
 }
 
 .result-label {
   font-weight: 500;
   margin-bottom: 4px;
   color: #10a37f;
+  font-size: 0.85rem;
+}
+
+.toggle-icon {
+  font-size: 12px;
+  color: #888;
 }
 
 .model-info {
@@ -754,6 +1108,25 @@ onUnmounted(() => {
   padding: 10px 20px 20px;
   background-color: white;
   border-top: 1px solid #e5e5e5;
+}
+
+.input-options {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.option-label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+
+.option-label input {
+  margin-right: 4px;
 }
 
 .input-box {
@@ -774,6 +1147,9 @@ onUnmounted(() => {
   font-family: inherit;
   padding: 6px;
   line-height: 1.4;
+  overflow-y: auto;
+  min-height: 38px;
+  max-height: calc(1.4em * 4 + 12px);
 }
 
 .send-button {
@@ -927,5 +1303,210 @@ onUnmounted(() => {
 .save-button:disabled, .cancel-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.loading-indicator {
+  display: flex;
+  gap: 4px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #888;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.5s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 1s;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 文本段和函数调用段的样式 */
+.text-segment {
+  margin-bottom: 10px;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* 支持Markdown渲染的基本样式 */
+.text-segment :deep(h1),
+.text-segment :deep(h2),
+.text-segment :deep(h3) {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.text-segment :deep(p) {
+  margin-bottom: 0.75em;
+}
+
+.text-segment :deep(ul),
+.text-segment :deep(ol) {
+  padding-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+.text-segment :deep(li) {
+  margin-bottom: 0.25em;
+}
+
+.text-segment :deep(pre) {
+  background-color: #f5f5f5;
+  padding: 0.5em;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+.text-segment :deep(code) {
+  background-color: #f5f5f5;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+.text-segment :deep(blockquote) {
+  border-left: 3px solid #ddd;
+  padding-left: 1em;
+  color: #666;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.text-segment :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1em;
+}
+
+.text-segment :deep(th),
+.text-segment :deep(td) {
+  border: 1px solid #ddd;
+  padding: 0.5em;
+}
+
+.text-segment :deep(a) {
+  color: #10a37f;
+  text-decoration: none;
+}
+
+.text-segment :deep(a:hover) {
+  text-decoration: underline;
+}
+
+/* 函数调用结果的Markdown渲染 */
+.result-content {
+  white-space: break-spaces;
+  word-break: break-word;
+  background-color: #fff;
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+
+.result-content :deep(pre) {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.function-badge {
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+  color: #444;
+  background-color: #f0f0f5;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.function-icon {
+  margin-right: 6px;
+}
+
+.function-calls-toggle {
+  background-color: #f7f7f9;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid #e0e0e5;
+}
+
+.function-name {
+  font-weight: bold;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.args-label, .result-label, .waiting-label {
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+
+.args-label {
+  color: #666;
+}
+
+.result-label {
+  color: #10a37f;
+}
+
+.waiting-label {
+  color: #f59f00;
+}
+
+.function-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.waiting-indicator {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.small-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #f59f00;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.small-dot:nth-child(2) {
+  animation-delay: 0.5s;
+}
+
+.small-dot:nth-child(3) {
+  animation-delay: 1s;
+}
+
+.user-message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 10px;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 </style>

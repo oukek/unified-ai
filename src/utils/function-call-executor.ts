@@ -1,5 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import type { AgentCallback, AgentFunction, AgentFunctionSchema, FunctionCall } from '../types'
+import type { AgentCallback, AgentFunctionSchema, FunctionCall } from '../types'
 
 /**
  * 函数调用执行器
@@ -23,7 +23,7 @@ export class FunctionCallExecutor {
 
     // 通知开始执行函数调用
     callback?.('function_call_start', { functionCalls })
-    
+
     for (const call of functionCalls) {
       const func = functions.find(f => f.name === call.name)
 
@@ -42,7 +42,6 @@ export class FunctionCallExecutor {
               name: func.name,
               arguments: call.arguments,
             })
-            console.log('----resultCall', func.name, call.arguments, resultCall.result)
           }
           results.push(resultCall)
         }

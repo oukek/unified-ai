@@ -10,7 +10,7 @@ export interface AgentFunction {
   /** 函数描述 */
   description?: string
   /** 函数参数模式 */
-  parameters: z.ZodObject<any>
+  parameters: z.ZodObject<any> | Record<string, any>
   /** 函数执行器 */
   executor?: (params: Record<string, any>) => Promise<any>
 }

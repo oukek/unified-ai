@@ -25,60 +25,35 @@ export class PromptEnhancer {
     }))
 
     // 添加函数说明和规范的调用格式
-    return `${prompt}\n\nYou can call the following functions:\n${JSON.stringify(functionDefinitions, null, 2)}\n\n
-To call a function, please use only the following standardized JSON format:
+    return `${prompt}
 
-For a single function call:
-{
-  "function_call": {
-    "name": "function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
+你可以调用以下工具，请务必严格使用下列工具名称和参数，工具名称必须保持一致，不得修改或新增：
+工具列表：
+${JSON.stringify(functionDefinitions, null, 2)}
 
-If you need to make multiple function calls at once, use this format:
+调用工具时，请严格按照以下标准 JSON 格式输出：
+- 只使用提供的工具名称，不得自行创建或更改工具名称；
+- 严格按照以上 JSON 格式输出，不要添加其他多余的文本或格式。
+
+1当需要调用一个或多个工具时，请严格使用如下格式，包括前后的标签：
+<==start_tool_calls==>
 {
   "function_calls": [
     {
-      "name": "first_function_name",
+      "name": "工具名称1",
       "arguments": {
-        "parameter_name": "parameter_value"
+        "参数名": "参数值"
       }
     },
     {
-      "name": "second_function_name",
+      "name": "工具名称2",
       "arguments": {
-        "parameter_name": "parameter_value"
+        "参数名": "参数值"
       }
     }
   ]
 }
-
-If you need to include function calls within your response, use this format:
-{
-  "response": "Your text response here",
-  "function_call": {
-    "name": "function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
-
-If you need to suggest a follow-up function call after seeing the result of the first one:
-{
-  "response": "Your analysis of the first function call result",
-  "next_function_call": {
-    "name": "next_function_name",
-    "arguments": {
-      "parameter_name": "parameter_value"
-    }
-  }
-}
-
-Please use ONLY these exact formats for function calls. Do not invent other formats or property names.`
+<==end_tool_calls==>`
   }
 
   /**

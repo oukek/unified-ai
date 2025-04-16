@@ -1,6 +1,9 @@
 import type { ChatStreamChunk, ResponseFormat } from '@oukek/unified-ai'
-import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
+import { UnifiedAI } from '@oukek/unified-ai'
+import { searchByGoogle } from '../tools/searchByGoogle'
+import { searchWebByUrl } from '../tools/searchWebByUrl'
 import { configService } from './configService'
+import { CustomModel } from './customModel'
 
 /**
  * 回调状态类型
@@ -30,13 +33,17 @@ class AiService {
         return false
       }
 
-      const geminiModel = new GeminiModel({
+      const geminiModel = new CustomModel({
         apiKey,
         model: 'gemini-2.0-flash', // 默认使用flash模型
       })
 
       this.ai = new UnifiedAI(geminiModel, {
-        maxRecursionDepth: 5,
+        maxRecursionDepth: 10,
+        functions: [
+          searchWebByUrl,
+          searchByGoogle,
+        ],
       })
 
       console.log('AI服务已初始化')
