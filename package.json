@@ -1,10 +1,9 @@
 {
   "name": "@oukek/unified-ai",
-  "version": "1.0.2",
+  "version": "1.0.6",
   "description": "unified-ai",
   "author": "Oukek",
   "license": "ISC",
-  "type": "module",
   "homepage": "https://github.com/oukek/unified-ai#readme",
   "repository": {
     "type": "git",
@@ -18,24 +17,12 @@
     "oukek",
     "api",
     "unified-ai",
-    "ai"
+    "ai",
+    "mcp"
   ],
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.js"
-    },
-    "./models": {
-      "types": "./dist/models/index.d.ts",
-      "import": "./dist/models/index.esm.js",
-      "require": "./dist/models/index.js"
-    },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.esm.js",
-      "require": "./dist/utils/index.js"
-    }
+    "import": "./dist/index.esm.js",
+    "require": "./dist/index.js"
   },
   "main": "dist/index.js",
   "module": "dist/index.esm.js",

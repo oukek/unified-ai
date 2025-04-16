@@ -6,3 +6,4 @@ pnpm-debug.log*
 .DS_Store
 logs/
 src/__test__/temp
+example/node-server/config.json
