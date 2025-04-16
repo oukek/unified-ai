@@ -71,15 +71,16 @@ ${JSON.stringify(functionDefinitions, null, 2)}
     responseFormat?: ResponseFormat,
   ): string {
     return `
-My previous question was: ${originalPrompt}
+IMPORTANT - Remember that the user's original question was: "${originalPrompt}"
 
-Your response was:
+Your previous response was:
 ${previousResponse}
 
 Here are the results of the function calls:
 ${functionResultsSummary}
 
-Please generate a final response that incorporates all this information. If you need to call additional functions, please clearly indicate this.
+Please generate a final response that directly answers the user's original question: "${originalPrompt}"
+If you need to call additional functions, please clearly indicate this.
 ${responseFormat === ResponseFormat.JSON ? '\nReturn your response in valid JSON format.' : ''}
 `
   }

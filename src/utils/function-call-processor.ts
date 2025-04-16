@@ -73,11 +73,16 @@ export class FunctionCallProcessor {
         functionCalls: functionCalls.length > 0 ? functionCalls : undefined,
       } as EnhancedChatResponse<T extends { responseFormat: ResponseFormat.JSON } ? ResponseFormat.JSON : ResponseFormat.TEXT>
 
+      // 从响应中移除函数调用标签
+      if (typeof response.content === 'string') {
+        response.content = FunctionCallParser.removeTaggedFunctionCalls(response.content) as any
+      }
+
       if (depth === 0 && options?.responseFormat === ResponseFormat.JSON && !initialResponse.isJsonResponse) {
         // 如果需要返回JSON但还未解析，在最终结果时解析
         try {
           const contentStr = typeof initialResponse.content === 'string'
-            ? initialResponse.content
+            ? FunctionCallParser.removeTaggedFunctionCalls(initialResponse.content)
             : JSON.stringify(initialResponse.content)
 
           // 尝试解析JSON
@@ -88,7 +93,7 @@ export class FunctionCallProcessor {
           // 解析失败，尝试修复
           try {
             const contentStr = typeof initialResponse.content === 'string'
-              ? initialResponse.content
+              ? FunctionCallParser.removeTaggedFunctionCalls(initialResponse.content)
               : JSON.stringify(initialResponse.content)
             response.content = JsonHelper.safeParseJson(contentStr)
             response.isJsonResponse = true
@@ -186,7 +191,7 @@ ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in v
       depth + 1,
       callback,
       options,
-      mcpClient
+      mcpClient,
     )
 
     // 合并函数调用链

@@ -55,7 +55,7 @@ ${JSON.stringify(functionDefinitions, null, 2)}
 - 只使用提供的工具名称，不得自行创建或更改工具名称；
 - 严格按照以上 JSON 格式输出，不要添加其他多余的文本或格式。
 
-1当需要调用一个或多个工具时，请严格使用如下格式，包括前后的标签：
+当需要调用一个或多个工具时，请严格使用如下格式，包括前后的标签：
 <==start_tool_calls==>
 {
   "function_calls": [
@@ -144,7 +144,7 @@ ${JSON.stringify(functionDefinitions, null, 2)}
     }
 
     // 创建选项的副本，避免修改原始对象
-    const enhancedOptions = { ...options } as any
+    const enhancedOptions = { ...options } as Record<string, any>
 
     // 处理工具
     enhancedOptions.tools = this.convertToolsForModel(functions, model, options)

@@ -21,10 +21,21 @@ export class FunctionCallExecutor {
   ): Promise<FunctionCall[]> {
     const results: FunctionCall[] = []
 
+    if (!functionCalls || functionCalls.length === 0) {
+      return results
+    }
+
     // 通知开始执行函数调用
     callback?.('function_call_start', { functionCalls })
 
     for (const call of functionCalls) {
+      // 检查函数调用是否已经执行
+      if (call.result !== undefined) {
+        // 已执行过的函数调用直接添加到结果中
+        results.push(call)
+        continue
+      }
+
       const func = functions.find(f => f.name === call.name)
 
       if (func) {

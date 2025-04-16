@@ -1,11 +1,8 @@
 import type { AgentCallback } from '../types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { z } from 'zod'
 import { GeminiModel } from '../models/gemini'
 import { UnifiedAI } from '../models/unified'
-import { ResponseFormat } from '../types'
-import { CustomModel } from './customModel'
 import 'dotenv/config'
 
 // 使用通过 npm 安装的 @modelcontextprotocol/server-filesystem 服务
@@ -18,14 +15,14 @@ describe('mCP with filesystem tests', () => {
   beforeAll(async () => {
     try {
       // 创建基础模型实例
-      const baseModel = new CustomModel({
+      const baseModel = new GeminiModel({
         apiKey: process.env.GEMINI_API_KEY ?? '',
       })
 
       // 创建UnifiedAI实例
       unifiedAI = new UnifiedAI(baseModel, {
         autoExecuteFunctions: true,
-        maxRecursionDepth: 5,
+        maxRecursionDepth: 10,
       })
 
       // 创建MCP客户端
@@ -48,10 +45,17 @@ describe('mCP with filesystem tests', () => {
       unifiedAI.addFunction({
         name: 'randomNumber',
         description: 'get a random number between min and max',
-        parameters: z.object({
-          min: z.number().optional(),
-          max: z.number().optional(),
-        }),
+        parameters: {
+          min: {
+            type: 'number',
+            description: 'min number',
+          },
+          max: {
+            type: 'number',
+            description: 'max number',
+          },
+          required: ['min', 'max'],
+        },
         executor: async ({ min, max }) => {
           const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min
           return randomNumber

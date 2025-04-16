@@ -16,5 +16,6 @@ export default antfu({
     'no-case-declarations': 'off',
     'jsdoc/check-param-names': 'off',
     'ts/explicit-function-return-type': 'off',
+    'no-prototype-builtins': 'off',
   },
 })
