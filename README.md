@@ -1,4 +1,5 @@
-# UnifiedAI
+# UnifiedAI [![npm version](https://img.shields.io/npm/v/@oukek/unified-ai)](https://www.npmjs.com/package/@oukek/unified-ai)
+
 
 一个统一的AI接口库，用于简化与多种AI模型的交互。
 

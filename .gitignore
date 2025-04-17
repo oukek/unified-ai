@@ -7,3 +7,4 @@ pnpm-debug.log*
 logs/
 src/__test__/temp
 example/node-server/config.json
+example/node-server/__temp__

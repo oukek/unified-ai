@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@oukek/unified-ai':
-        specifier: ^1.0.9
-        version: 1.0.9
+        specifier: ^1.1.0
+        version: 1.1.0
       axios:
         specifier: ^1.8.4
         version: 1.8.4
@@ -78,8 +78,8 @@ packages:
     resolution: {integrity: sha512-Jq2EUCQpe0iyO5FGpzVYDNFR6oR53AIrwph9yWl7uSc7IWUMsrmpmSaTGra5hQNunXpM+9oit85p924jWuHzUA==, tarball: https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.9.0.tgz}
     engines: {node: '>=18'}
 
-  '@oukek/unified-ai@1.0.9':
-    resolution: {integrity: sha512-+k3MrWCFNdAUrux7m5Dz5uyRCQCJY33z/P6I4kXh6WsF9WkkehI0Fv4SpRD3AtGJ/pz5/0PU2U+PWheJu2yv/Q==, tarball: https://registry.npmjs.org/@oukek/unified-ai/-/unified-ai-1.0.9.tgz}
+  '@oukek/unified-ai@1.1.0':
+    resolution: {integrity: sha512-guDvhukqo4UkFxMzKh7Ai06hoiV2X0IwJTjgkgm5tFBluj8/zxaKuiJ27rBB6Pm/CY5zOUlXkrOB46hu8bHX4Q==, tarball: https://registry.npmjs.org/@oukek/unified-ai/-/unified-ai-1.1.0.tgz}
 
   '@puppeteer/browsers@2.10.0':
     resolution: {integrity: sha512-HdHF4rny4JCvIcm7V1dpvpctIGqM3/Me255CB44vW7hDG1zYMmcBMjpNqZEDxdCfXGLkx5kP0+Jz5DUS+ukqtA==, tarball: https://registry.npmjs.org/@puppeteer/browsers/-/browsers-2.10.0.tgz}
@@ -1168,7 +1168,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@oukek/unified-ai@1.0.9':
+  '@oukek/unified-ai@1.1.0':
     dependencies:
       '@google/genai': 0.8.0
       '@modelcontextprotocol/sdk': 1.9.0

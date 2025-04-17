@@ -1,72 +1,51 @@
 <script setup lang="ts">
+import ErrorMessage from './components/ErrorMessage.vue'
 </script>
 
 <template>
   <main>
     <router-view />
+    <ErrorMessage />
   </main>
 </template>
 
-<style scoped>
-header {
-  line-height: 1.5;
-  max-height: 100vh;
+<style>
+:root {
+  --main-text-color: #333;
+  --error-color: #dc2626;
+  --primary-color: #10a37f;
+  --border-color: #d9d9e3;
 }
 
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-nav {
-  width: 100%;
-  font-size: 12px;
-  text-align: center;
-  margin-top: 2rem;
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: 15px;
+  color: var(--main-text-color);
+  background-color: #f7f7f8;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-nav a.router-link-exact-active {
-  color: var(--color-text);
+main {
+  position: relative;
+  min-height: 100vh;
 }
 
-nav a.router-link-exact-active:hover {
-  background-color: transparent;
+button {
+  cursor: pointer;
+  font-family: inherit;
 }
 
-nav a {
-  display: inline-block;
-  padding: 0 1rem;
-  border-left: 1px solid var(--color-border);
-}
-
-nav a:first-of-type {
-  border: 0;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  nav {
-    text-align: left;
-    margin-left: -1rem;
-    font-size: 1rem;
-
-    padding: 1rem 0;
-    margin-top: 1rem;
-  }
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 </style>
