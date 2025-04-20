@@ -1,5 +1,6 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import type { AgentCallback, AgentFunction, AgentFunctionSchema, FunctionCall } from '../types'
+import type { AgentCallback, AgentFunctionSchema, FunctionCall } from '../types'
+import { AgentEventType } from '../types'
 
 /**
  * 函数调用执行器
@@ -21,10 +22,21 @@ export class FunctionCallExecutor {
   ): Promise<FunctionCall[]> {
     const results: FunctionCall[] = []
 
+    if (!functionCalls || functionCalls.length === 0) {
+      return results
+    }
+
     // 通知开始执行函数调用
-    callback?.('function_call_start', { functionCalls })
-    
+    callback?.(AgentEventType.FUNCTION_CALL_START, { functionCalls })
+
     for (const call of functionCalls) {
+      // 检查函数调用是否已经执行
+      if (call.result !== undefined) {
+        // 已执行过的函数调用直接添加到结果中
+        results.push(call)
+        continue
+      }
+
       const func = functions.find(f => f.name === call.name)
 
       if (func) {
@@ -42,13 +54,12 @@ export class FunctionCallExecutor {
               name: func.name,
               arguments: call.arguments,
             })
-            console.log('----resultCall', func.name, call.arguments, resultCall.result)
           }
           results.push(resultCall)
         }
         catch (error: any) {
           // 通知执行函数出错
-          callback?.('error', {
+          callback?.(AgentEventType.ERROR, {
             functionCall: call,
             error: error.message,
           })
@@ -62,7 +73,7 @@ export class FunctionCallExecutor {
       }
       else {
         // 通知未找到函数
-        callback?.('error', {
+        callback?.(AgentEventType.ERROR, {
           functionCall: call,
           error: `Function '${call.name}' not found`,
         })
@@ -76,7 +87,7 @@ export class FunctionCallExecutor {
     }
 
     // 通知函数调用结束
-    callback?.('function_call_end', { functionCalls: results })
+    callback?.(AgentEventType.FUNCTION_CALL_END, { functionCalls: results })
 
     return results
   }

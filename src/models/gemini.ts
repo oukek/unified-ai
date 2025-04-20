@@ -8,6 +8,7 @@ import type {
   AgentFunctionSchema,
   ChatMessage,
   ChatOptions,
+  ContentType,
   ResponseTypeForOptions,
   StreamChunkTypeForOptions,
 } from '../types'
@@ -19,6 +20,9 @@ import {
   ChatRole as UnifiedChatRole,
 } from '../types'
 import { JsonHelper } from '../utils'
+
+// Define IsLast type helper here since it's internal to the types file
+type IsLast<T> = T extends { isLast: infer L } ? L : false
 
 /**
  * Gemini API 参数接口
@@ -32,6 +36,182 @@ export interface GeminiOptions {
   generationConfig?: GenerationConfig
   /** 安全设置 */
   safetySettings?: SafetySetting[]
+}
+
+interface GeminiToolSchema {
+  name: string
+  description: string
+  parameters: {
+    type: 'object'
+    properties: Record<string, GeminiToolProperty>
+    required: string[]
+  }
+}
+
+interface GeminiToolProperty {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object'
+  description: string
+  items?: { type: 'string' | 'number' | 'boolean' | 'object', properties?: Record<string, GeminiToolProperty>, required?: string[] } // Only for arrays
+  enum?: any[] // Optional enum for string and number
+  properties?: Record<string, GeminiToolProperty> // for nested objects.
+  required?: string[]
+}
+
+function convertSchema(originalSchema: any, name: string): GeminiToolSchema['parameters'] {
+  const converted: GeminiToolSchema = {
+    name, // Add the name property
+    description: originalSchema.description || `A function named ${name}`, // Add a default description if missing
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: originalSchema.required || [],
+    },
+    // removed additionalProperties, doesn't belong at the top level in Gemini's `tools` object,
+  }
+
+  for (const propertyName in originalSchema.properties) {
+    if (!originalSchema.properties.hasOwnProperty(propertyName)) {
+      continue
+    }
+
+    const originalProperty = originalSchema.properties[propertyName]
+    let convertedProperty: GeminiToolProperty
+
+    switch (originalProperty.type) {
+      case 'string':
+        convertedProperty = {
+          type: 'string',
+          description: originalProperty.description,
+          enum: originalProperty.enum,
+        }
+        break
+      case 'number':
+        convertedProperty = {
+          type: 'number',
+          description: originalProperty.description,
+          enum: originalProperty.enum,
+        }
+        break
+      case 'boolean':
+        convertedProperty = {
+          type: 'boolean',
+          description: originalProperty.description,
+        }
+        break
+      case 'array':
+        if (!originalProperty.items) {
+          throw new Error(`Array type must specify items property for ${propertyName} in ${name}`)
+        }
+
+        const itemsType = originalProperty.items.type
+        let items: GeminiToolProperty['items']
+
+        if (itemsType === 'object') {
+          // Recursively convert the schema for items of type object
+
+          // type-assertion to shut the compiler up, but it's actually correct.
+          const innerProperties: Record<string, GeminiToolProperty> = {}
+          const innerRequired: string[] = originalProperty.items.required || []
+
+          for (const itemPropertyName in originalProperty.items.properties) {
+            if (originalProperty.items.properties.hasOwnProperty(itemPropertyName)) {
+              innerProperties[itemPropertyName] = convertProperty(originalProperty.items.properties[itemPropertyName])
+            }
+          }
+          items = {
+            type: 'object',
+            properties: innerProperties,
+            required: innerRequired,
+          }
+        }
+        else {
+          items = { type: itemsType } // keep it simple when items are not objects
+        }
+
+        convertedProperty = {
+          type: 'array',
+          description: originalProperty.description,
+          items,
+        }
+        break
+      case 'object':
+        convertedProperty = {
+          type: 'object',
+          description: originalProperty.description,
+          properties: {},
+          required: originalProperty.required || [],
+        }
+        for (const objPropertyName in originalProperty.properties) {
+          if (originalProperty.properties.hasOwnProperty(objPropertyName)) {
+            convertedProperty.properties![objPropertyName] = convertProperty(originalProperty.properties[objPropertyName])
+          }
+        }
+        break
+      default:
+        throw new Error(`Unsupported type ${originalProperty.type} for ${propertyName} in ${name}`)
+    }
+
+    converted.parameters.properties[propertyName] = convertedProperty
+  }
+
+  // If no properties are defined in originalSchema, but there are required fields, ensure those fields have at least a minimal "string" definition
+
+  if (Object.keys(originalSchema.properties || {}).length === 0 && originalSchema.required && originalSchema.required.length > 0) {
+    originalSchema.required.forEach((requiredField: string) => {
+      converted.parameters.properties[requiredField] = {
+        type: 'string',
+        description: `Missing description for ${requiredField}, please fill this in.`, // IMPORTANT, description is required
+      }
+    })
+  }
+
+  // Handle no properties case - add a placeholder
+  if (Object.keys(converted.parameters.properties || {}).length === 0) {
+    converted.parameters.properties.placeholder = {
+      type: 'string',
+      description: 'This function does not require any parameters. This placeholder is for internal use only and should not be passed.',
+    }
+  }
+  return converted.parameters
+}
+
+function convertProperty(originalProperty: any): GeminiToolProperty {
+  let convertedProperty: GeminiToolProperty
+  switch (originalProperty.type) {
+    case 'string':
+      convertedProperty = {
+        type: 'string',
+        description: originalProperty.description,
+        enum: originalProperty.enum,
+      }
+      break
+    case 'number':
+      convertedProperty = {
+        type: 'number',
+        description: originalProperty.description,
+        enum: originalProperty.enum,
+      }
+      break
+    case 'boolean':
+      convertedProperty = {
+        type: 'boolean',
+        description: originalProperty.description,
+      }
+      break
+    case 'object':
+      convertedProperty = {
+        type: 'object',
+        description: originalProperty.description,
+      }
+      break
+    default:
+      convertedProperty = {
+        type: originalProperty.type,
+        description: originalProperty.description,
+      }
+      break
+  }
+  return convertedProperty
 }
 
 /**
@@ -98,11 +278,13 @@ export class GeminiModel extends BaseModel {
 
     // 转换为Gemini的工具格式
     return [{
-      functionDeclarations: tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      })),
+      functionDeclarations: tools.map((tool) => {
+        return {
+          name: tool.name,
+          description: tool.description,
+          parameters: convertSchema(tool.parameters, tool.name),
+        }
+      }),
     }]
   }
 
@@ -147,21 +329,33 @@ export class GeminiModel extends BaseModel {
     response: GenerateContentResponse,
     options?: T,
   ): ResponseTypeForOptions<T> {
-    // 获取文本内容
+    // Check for function calls first
+    const functionCalls = response.functionCalls || []
+    if (functionCalls.length > 0) {
+      const functionCallsData = functionCalls.map((call: any) => ({
+        name: call.name,
+        arguments: call.args,
+      }))
+
+      return {
+        content: { function_calls: functionCallsData } as unknown as ContentType<T extends { responseFormat: ResponseFormat.JSON } ? ResponseFormat.JSON : ResponseFormat.TEXT>,
+        isJsonResponse: true as T extends { responseFormat: ResponseFormat.JSON } ? true : boolean,
+        model: this.modelName,
+        usage: {
+          promptTokens: undefined,
+          completionTokens: undefined,
+          totalTokens: undefined,
+        },
+        functionCalls: functionCallsData,
+      } as unknown as ResponseTypeForOptions<T>
+    }
+
+    // If no function calls, proceed with text content
     const rawText = response.text
     let content: any = rawText
     const isJsonMode = options?.responseFormat === ResponseFormat.JSON
 
-    const functionCalls = response.functionCalls || []
-    if (functionCalls.length > 0) {
-      content = {
-        function_calls: functionCalls.map((call: any) => ({
-          name: call.name,
-          arguments: call.args,
-        })),
-      }
-    }
-    else if (isJsonMode && rawText) {
+    if (isJsonMode && rawText) {
       try {
         // 尝试解析JSON
         content = JsonHelper.safeParseJson(rawText)
@@ -198,7 +392,7 @@ export class GeminiModel extends BaseModel {
    */
   async unifiedChat<T extends ChatOptions | undefined = undefined>(
     prompt: string,
-    options?: T,
+    options?: T & { systemMessage?: string },
   ): Promise<ResponseTypeForOptions<T>> {
     try {
       // 准备参数
@@ -216,6 +410,10 @@ export class GeminiModel extends BaseModel {
         contents = this.convertMessagesToGeminiFormat(
           options.history.filter(m => m.role !== UnifiedChatRole.SYSTEM),
         )
+      }
+
+      if (options?.systemMessage) {
+        systemInstruction = options.systemMessage
       }
 
       // 添加当前用户消息
@@ -280,6 +478,10 @@ export class GeminiModel extends BaseModel {
         )
       }
 
+      if (options?.systemMessage) {
+        systemInstruction = options.systemMessage
+      }
+
       // 添加当前用户消息
       contents.push({
         role: 'user',
@@ -314,18 +516,19 @@ export class GeminiModel extends BaseModel {
       for await (const chunk of response) {
         const functionCalls = chunk.functionCalls || []
         if (functionCalls.length > 0) {
-          const functionCallChunk = {
-            content: JSON.stringify({
-              function_calls: functionCalls.map((call: any) => ({
-                name: call.name,
-                arguments: call.args,
-              })),
-            }),
-            isJsonResponse: true,
+          const functionCallsData = functionCalls.map((call: any) => ({
+            name: call.name,
+            arguments: call.args,
+          }))
+
+          yield {
+            content: { function_calls: functionCallsData } as unknown as boolean extends IsLast<{ isLast: true }> ? string : ContentType<T extends { responseFormat: ResponseFormat.JSON } ? ResponseFormat.JSON : ResponseFormat.TEXT>,
+            isJsonResponse: true as T extends { responseFormat: ResponseFormat.JSON } ? boolean : boolean,
             isLast: true,
             model: this.modelName,
-          } as StreamChunkTypeForOptions<T>
-          yield functionCallChunk
+            functionCalls: functionCallsData,
+          } as unknown as StreamChunkTypeForOptions<T>
+          return
         }
 
         const text = chunk.text || ''

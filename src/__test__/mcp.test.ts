@@ -1,14 +1,13 @@
-import { z } from 'zod'
-import { GeminiModel } from '../models/gemini'
-import { UnifiedAI } from '../models/unified'
-import { AgentCallback, ResponseFormat } from '../types'
+import type { AgentCallback, ErrorEventData, FunctionCallEndEventData, FunctionCallStartEventData, ResponseEndEventData, ResponseStartEventData } from '../types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { GeminiModel } from '../models/gemini'
+import { UnifiedAI } from '../models/unified'
+import { AgentEventType } from '../types'
 import 'dotenv/config'
-import { CustomModel } from './customModel'
 
 // 使用通过 npm 安装的 @modelcontextprotocol/server-filesystem 服务
-describe('MCP with filesystem tests', () => {
+describe('mCP with filesystem tests', () => {
   let unifiedAI: UnifiedAI
   let mcpClient: Client
   let cleanup: () => Promise<void>
@@ -17,78 +16,85 @@ describe('MCP with filesystem tests', () => {
   beforeAll(async () => {
     try {
       // 创建基础模型实例
-      const baseModel = new CustomModel({
+      const baseModel = new GeminiModel({
         apiKey: process.env.GEMINI_API_KEY ?? '',
       })
-      
+
       // 创建UnifiedAI实例
       unifiedAI = new UnifiedAI(baseModel, {
         autoExecuteFunctions: true,
-        maxRecursionDepth: 5,
+        maxRecursionDepth: 10,
       })
-      
+
       // 创建MCP客户端
       mcpClient = new Client({ name: 'test-client', version: '1.0.0' })
       const transport = new StdioClientTransport({
         command: 'npx',
         args: [
-          "-y",
-          "@modelcontextprotocol/server-filesystem",
-          "/Users/codebear/okew/unifiedAI/src/__test__",
+          '-y',
+          '@modelcontextprotocol/server-filesystem',
+          '/Users/codebear/okew/unifiedAI/src/__test__',
         ],
       })
-      
+
       // 连接到传输层
       await mcpClient.connect(transport)
-      
+
       // 将MCP客户端添加到UnifiedAI
       unifiedAI.useMcp(mcpClient)
 
       unifiedAI.addFunction({
         name: 'randomNumber',
         description: 'get a random number between min and max',
-        parameters: z.object({
-          min: z.number().optional(),
-          max: z.number().optional(),
-        }),
+        parameters: {
+          min: {
+            type: 'number',
+            description: 'min number',
+          },
+          max: {
+            type: 'number',
+            description: 'max number',
+          },
+          required: ['min', 'max'],
+        },
         executor: async ({ min, max }) => {
           const randomNumber = Math.floor(Math.random() * (max - min + 1)) + min
           return randomNumber
         },
       })
 
-        // 创建回调函数
+      // 使用Jest mock包装这个函数
       agentCallback = jest.fn((state, data) => {
         const timestamp = new Date().toISOString()
 
-        switch (state) {
-          case 'response_start':
-            console.log(`[${timestamp}] 🟢 开始回答: "${data.prompt}"`)
-            break
-
-          case 'function_call_start':
-            console.log(`[${timestamp}] 🔄 调用函数: ${data.functionCalls.map((f: any) => f.name).join(', ')}`)
-            break
-
-          case 'function_call_end':
-            console.log(`[${timestamp}] ✅ 函数执行完成: ${data.functionCalls.map((f: any) => f.name).join(', ')}`)
-            break
-
-          case 'response_chunk':
-            // 流式响应的每个块，这里不打印避免干扰输出
-            break
-
-          case 'response_end':
-            const content = typeof data.response.content === 'string' ? data.response.content : JSON.stringify(data.response.content)
-            console.log(`[${timestamp}] 🏁 回答完成，长度: ${content.length}字符`)
-            break
-
-          case 'error':
-            console.error(`[${timestamp}] ❌ 错误:`, data.error)
-            break
+        if (state === AgentEventType.RESPONSE_START) {
+          const typedData = data as ResponseStartEventData
+          console.log(`[${timestamp}] 🟢 开始回答: "${typedData.prompt}"`)
+        }
+        else if (state === AgentEventType.FUNCTION_CALL_START) {
+          const typedData = data as FunctionCallStartEventData
+          console.log(`[${timestamp}] 🔄 调用函数: ${typedData.functionCalls.map(f => f.name).join(', ')}`)
+        }
+        else if (state === AgentEventType.FUNCTION_CALL_END) {
+          const typedData = data as FunctionCallEndEventData
+          console.log(`[${timestamp}] ✅ 函数执行完成: ${typedData.functionCalls.map(f => f.name).join(', ')}`)
+        }
+        else if (state === AgentEventType.RESPONSE_CHUNK) {
+        // 流式响应的每个块，这里不打印避免干扰输出
+        }
+        else if (state === AgentEventType.RESPONSE_END) {
+          const typedData = data as ResponseEndEventData
+          const content = typeof typedData.response.content === 'string'
+            ? typedData.response.content
+            : JSON.stringify(typedData.response.content)
+          console.log(`[${timestamp}] 🏁 回答完成，长度: ${content.length}字符`)
+        }
+        else if (state === AgentEventType.ERROR) {
+          const typedData = data as ErrorEventData
+          console.error(`[${timestamp}] ❌ 错误:`, typedData.error)
         }
       })
-      
+
       // 设置清理函数
       cleanup = async () => {
         await mcpClient.close()
@@ -111,11 +117,11 @@ describe('MCP with filesystem tests', () => {
 
     const response = await unifiedAI.unifiedChat(prompt, undefined, agentCallback)
     console.log('MCP Response:', response.content)
-    
+
     // 验证响应中包含了文件内容
     expect(response.content).toContain('test.txt')
     expect(typeof response.content).toBe('string')
-    
+
     // 验证响应中包含数字（文件内容）
     const responseText = response.content as string
     const containsNumber = /\d+/.test(responseText)

@@ -10,7 +10,7 @@ export interface AgentFunction {
   /** 函数描述 */
   description?: string
   /** 函数参数模式 */
-  parameters: z.ZodObject<any>
+  parameters: z.ZodObject<any> | Record<string, any>
   /** 函数执行器 */
   executor?: (params: Record<string, any>) => Promise<any>
 }
@@ -45,28 +45,108 @@ export enum AgentEventType {
 }
 
 /**
- * Agent事件数据
+ * 响应开始事件数据
  */
-export interface AgentEvent {
-  /** 事件类型 */
-  type: AgentEventType
-  /** 事件数据 */
-  data: any
-  /** 时间戳 */
-  timestamp: number
+export interface ResponseStartEventData {
+  /** 提示内容 */
+  prompt: string
+  /** 请求选项 */
+  options?: ChatOptions
 }
 
 /**
- * Agent事件回调函数类型
+ * 响应结束事件数据
  */
-export type AgentEventCallback = (event: AgentEvent) => void | Promise<void>
+export interface ResponseEndEventData {
+  /** 响应结果 */
+  response: ChatResponse<any>
+}
 
 /**
- * 聊天会话扩展选项
+ * 响应块事件数据
  */
-export interface ChatSessionOptions extends ChatOptions {
-  /** 事件回调函数 */
-  eventCallback?: AgentEventCallback
+export interface ResponseChunkEventData {
+  /** 响应块 */
+  chunk: {
+    content: string | any
+    isJsonResponse: boolean
+    isLast: boolean
+    model?: string
+  }
+}
+
+/**
+ * 函数调用开始事件数据
+ */
+export interface FunctionCallStartEventData {
+  /** 函数调用列表 */
+  functionCalls: FunctionCall[]
+}
+
+/**
+ * 函数调用结束事件数据
+ */
+export interface FunctionCallEndEventData {
+  /** 函数调用列表（包含结果） */
+  functionCalls: FunctionCall[]
+}
+
+/**
+ * 递归开始事件数据
+ */
+export interface RecursionStartEventData {
+  /** 初始内容 */
+  initialContent: string | Record<string, any>
+  /** 函数调用列表 */
+  functionCalls: FunctionCall[]
+  /** 初始响应 */
+  initialResponse?: ChatResponse<any>
+  /** 深度 */
+  depth: number
+}
+
+/**
+ * 递归结束事件数据
+ */
+export interface RecursionEndEventData {
+  /** 最终内容 */
+  finalContent: any
+  /** 函数调用列表 */
+  functionCalls: FunctionCall[]
+  /** 响应 */
+  response: ChatResponse<any>
+  /** 深度 */
+  depth: number
+  /** 完成执行的函数调用 */
+  completedFunctionCalls: FunctionCall[]
+}
+
+/**
+ * 错误事件数据
+ */
+export interface ErrorEventData {
+  /** 提示内容 */
+  prompt?: string
+  /** 请求选项 */
+  options?: ChatOptions
+  /** 错误信息 */
+  error: string
+  /** 出错的函数调用 */
+  functionCall?: FunctionCall
+}
+
+/**
+ * Agent事件类型到数据类型的映射
+ */
+export interface AgentEventDataMap {
+  [AgentEventType.RESPONSE_START]: ResponseStartEventData
+  [AgentEventType.RESPONSE_END]: ResponseEndEventData
+  [AgentEventType.RESPONSE_CHUNK]: ResponseChunkEventData
+  [AgentEventType.FUNCTION_CALL_START]: FunctionCallStartEventData
+  [AgentEventType.FUNCTION_CALL_END]: FunctionCallEndEventData
+  [AgentEventType.RECURSION_START]: RecursionStartEventData
+  [AgentEventType.RECURSION_END]: RecursionEndEventData
+  [AgentEventType.ERROR]: ErrorEventData
 }
 
 /**
@@ -104,4 +184,7 @@ export interface EnhancedChatResponse<T extends ResponseFormat | undefined = und
 /**
  * Agent回调函数类型
  */
-export type AgentCallback = (state: string, data: any) => void | Promise<void>
+export type AgentCallback = <T extends keyof AgentEventDataMap>(
+  state: T,
+  data: AgentEventDataMap[T]
+) => void | Promise<void>

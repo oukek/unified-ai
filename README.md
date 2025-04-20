@@ -1,4 +1,5 @@
-# UnifiedAI
+# UnifiedAI [![npm version](https://img.shields.io/npm/v/@oukek/unified-ai)](https://www.npmjs.com/package/@oukek/unified-ai)
+
 
 一个统一的AI接口库，用于简化与多种AI模型的交互。
 
@@ -14,12 +15,14 @@
 - 强大的Agent功能（函数调用），支持链式调用执行
 - 支持Model Context Protocol (MCP)，可与文件系统等外部工具交互
 - 内置JSON修复功能，自动处理模型返回的非标准JSON
+- 丰富的事件回调系统，可监控整个交互过程
 - 完全TypeScript支持，提供完善的类型定义
+- 可自定义参数，适应不同模型的特殊需求
 
 ## 支持的模型
 
-- **Gemini**: 支持Google的Gemini系列模型
-- **自定义模型**: 支持扩展实现自定义模型
+- **Gemini**: 支持Google的Gemini系列模型，包括gemini-pro和gemini-1.5-pro等
+- **自定义模型**: 支持扩展实现自定义模型，只需实现BaseModel接口
 
 ## 安装
 
@@ -50,7 +53,7 @@ import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
 // 初始化基础模型
 const geminiModel = new GeminiModel({
   apiKey: 'your_gemini_api_key_here', // 或从环境变量读取
-  model: 'gemini-2.0-flash' // 指定模型名称
+  model: 'gemini-1.5-pro' // 指定模型名称
 })
 
 // 初始化UnifiedAI
@@ -77,6 +80,11 @@ async function chat() {
     const response = await ai.unifiedChat('你好，请介绍一下自己')
     console.log('AI回复:', response.content)
     console.log('模型:', response.model)
+    
+    // 输出token使用情况（如果可用）
+    if (response.usage) {
+      console.log('Token使用:', response.usage)
+    }
   }
   catch (error) {
     console.error('聊天请求失败:', error)
@@ -84,6 +92,32 @@ async function chat() {
 }
 
 chat()
+```
+
+### 带历史记录的聊天
+
+```typescript
+import { GeminiModel, UnifiedAI, ChatRole } from '@oukek/unified-ai'
+
+// 初始化
+const geminiModel = new GeminiModel({
+  apiKey: process.env.GEMINI_API_KEY
+})
+const ai = new UnifiedAI(geminiModel)
+
+// 带历史记录的聊天
+async function chatWithHistory() {
+  const history = [
+    { role: ChatRole.USER, content: '你好，我叫张三' },
+    { role: ChatRole.ASSISTANT, content: '你好张三，很高兴认识你！有什么我可以帮助你的吗？' }
+  ]
+  
+  const response = await ai.unifiedChat('你猜我今年多大了？', { history })
+  console.log('AI回复:', response.content) 
+  // AI会回复不知道年龄，因为用户没有提供这个信息
+}
+
+chatWithHistory()
 ```
 
 ### 流式响应
@@ -267,7 +301,7 @@ async function getJsonResponse() {
   console.log('城市信息:', response.content)
   
   // 可以直接访问对象属性
-  if (response.content.cities) {
+  if (typeof response.content === 'object' && response.content.cities) {
     console.log('北京人口:', response.content.cities['北京'].population)
   }
 }
@@ -278,7 +312,7 @@ getJsonResponse()
 ### 使用回调函数监控过程
 
 ```typescript
-import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
+import { GeminiModel, UnifiedAI, AgentEventType } from '@oukek/unified-ai'
 
 // 初始化
 const geminiModel = new GeminiModel({
@@ -291,31 +325,39 @@ const callback = (state: string, data: any) => {
   const timestamp = new Date().toISOString()
   
   switch (state) {
-    case 'response_start':
+    case AgentEventType.RESPONSE_START:
       console.log(`[${timestamp}] 🟢 开始回答: "${data.prompt}"`)
       break
 
-    case 'function_call_start':
+    case AgentEventType.FUNCTION_CALL_START:
       console.log(`[${timestamp}] 🔄 调用函数: ${data.functionCalls.map((f: any) => f.name).join(', ')}`)
       break
 
-    case 'function_call_end':
+    case AgentEventType.FUNCTION_CALL_END:
       console.log(`[${timestamp}] ✅ 函数执行完成: ${data.functionCalls.map((f: any) => f.name).join(', ')}`)
       break
 
-    case 'response_chunk':
+    case AgentEventType.RESPONSE_CHUNK:
       // 流式响应的每个块，这里不打印避免干扰输出
       break
 
-    case 'response_end':
+    case AgentEventType.RESPONSE_END:
       const content = typeof data.response.content === 'string' 
         ? data.response.content 
         : JSON.stringify(data.response.content)
       console.log(`[${timestamp}] 🏁 回答完成，长度: ${content.length}字符`)
       break
 
-    case 'error':
+    case AgentEventType.ERROR:
       console.error(`[${timestamp}] ❌ 错误:`, data.error)
+      break
+      
+    case AgentEventType.RECURSION_START:
+      console.log(`[${timestamp}] 🔁 开始递归调用`)
+      break
+      
+    case AgentEventType.RECURSION_END:
+      console.log(`[${timestamp}] 🔁 递归调用结束`)
       break
   }
 }
@@ -394,11 +436,75 @@ async function setupAIWithMCP() {
 setupAIWithMCP()
 ```
 
+### 自定义模型参数
+
+可以为模型设置自定义参数：
+
+```typescript
+import { GeminiModel, UnifiedAI } from '@oukek/unified-ai'
+
+// 初始化Gemini模型
+const geminiModel = new GeminiModel({
+  apiKey: process.env.GEMINI_API_KEY,
+  model: 'gemini-1.5-pro',
+  // 设置生成配置
+  generationConfig: {
+    temperature: 0.2,
+    topP: 0.8,
+    topK: 40,
+    maxOutputTokens: 2048,
+  },
+  // 设置安全配置
+  safetySettings: [
+    {
+      category: 'HARM_CATEGORY_HARASSMENT',
+      threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+    },
+    {
+      category: 'HARM_CATEGORY_HATE_SPEECH',
+      threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+    },
+  ],
+})
+
+const ai = new UnifiedAI(geminiModel)
+
+// 使用聊天时也可以覆盖某些参数
+async function chatWithCustomParams() {
+  const response = await ai.unifiedChat(
+    '写一个短篇科幻故事',
+    {
+      temperature: 0.8, // 使用较高的温度以增加创意性
+      maxTokens: 1000, // 限制输出长度
+    }
+  )
+  console.log(response.content)
+}
+
+chatWithCustomParams()
+```
+
 ## API文档
 
 ### BaseModel
 
 所有AI模型的基类，定义了统一的接口。
+
+```typescript
+abstract class BaseModel {
+  abstract unifiedChat<T extends ChatOptions | undefined>(
+    prompt: string,
+    options?: T
+  ): Promise<ResponseTypeForOptions<T>>
+  
+  abstract unifiedChatStream<T extends ChatOptions | undefined>(
+    prompt: string,
+    options?: T
+  ): AsyncGenerator<StreamChunkTypeForOptions<T>, void, unknown>
+  
+  abstract getModel(): string
+}
+```
 
 #### 方法
 
@@ -430,7 +536,7 @@ constructor(
 
 #### 方法
 
-- `unifiedChat(prompt: string, options?: ChatOptions, callback?: AgentCallback): Promise<ChatResponse>`  
+- `unifiedChat(prompt: string, options?: ChatOptions, callback?: AgentCallback): Promise<EnhancedChatResponse>`  
   发送聊天请求并获取响应，支持函数调用。
   
 - `unifiedChatStream(prompt: string, options?: ChatOptions, callback?: AgentCallback): AsyncGenerator<ChatStreamChunk>`  
@@ -484,6 +590,38 @@ interface ChatOptions {
 }
 ```
 
+### ChatMessage
+
+```typescript
+interface ChatMessage {
+  /** 消息角色 */
+  role: ChatRole;
+  /** 消息内容 */
+  content: string;
+}
+```
+
+### ChatRole
+
+```typescript
+enum ChatRole {
+  USER = 'user',
+  ASSISTANT = 'assistant',
+  SYSTEM = 'system',
+}
+```
+
+### ResponseFormat
+
+```typescript
+enum ResponseFormat {
+  /** 文本格式 */
+  TEXT = 'text',
+  /** JSON格式 */
+  JSON = 'json',
+}
+```
+
 ### AgentFunction
 
 ```typescript
@@ -510,6 +648,129 @@ interface FunctionCall {
   /** 函数执行结果 */
   result?: any;
 }
+```
+
+### ChatResponse
+
+```typescript
+interface ChatResponse<T extends ResponseFormat | undefined = undefined> {
+  /** 
+   * 响应内容
+   * 当 responseFormat 为 JSON 时，这是一个解析后的 JSON 对象
+   * 当 responseFormat 为 TEXT 或未指定时，这是一个字符串
+   */
+  content: ContentType<T>;
+  /** 标识响应内容是否为JSON对象 */
+  isJsonResponse: T extends ResponseFormat.JSON ? true : boolean;
+  /** 使用的模型 */
+  model: string;
+  /** 消耗的token数量 */
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  /** 额外信息，可以存储原始用户提问等元数据 */
+  additionalInfo?: {
+    userPrompt?: string;
+    [key: string]: any;
+  };
+}
+```
+
+### EnhancedChatResponse
+
+```typescript
+interface EnhancedChatResponse<T extends ResponseFormat | undefined = undefined> extends ChatResponse<T> {
+  /** 函数调用详情 */
+  functionCalls?: FunctionCall[];
+}
+```
+
+### AgentEventType
+
+```typescript
+enum AgentEventType {
+  /** AI响应开始 */
+  RESPONSE_START = 'response_start',
+  /** AI响应结束 */
+  RESPONSE_END = 'response_end',
+  /** AI响应片段 */
+  RESPONSE_CHUNK = 'response_chunk',
+  /** 函数调用开始 */
+  FUNCTION_CALL_START = 'function_call_start',
+  /** 函数调用结束 */
+  FUNCTION_CALL_END = 'function_call_end',
+  /** 递归调用开始 */
+  RECURSION_START = 'recursion_start',
+  /** 递归调用结束 */
+  RECURSION_END = 'recursion_end',
+  /** 发生错误 */
+  ERROR = 'error',
+}
+```
+
+## 最佳实践
+
+### 错误处理
+
+始终使用try/catch捕获可能的错误：
+
+```typescript
+async function safeChat() {
+  try {
+    const response = await ai.unifiedChat('...')
+    // 处理响应
+  } catch (error) {
+    // 处理错误
+    console.error('聊天出错:', error.message)
+    // 可能的重试逻辑
+  }
+}
+```
+
+### 函数调用参数验证
+
+使用zod进行参数验证可以增加代码健壮性：
+
+```typescript
+import { z } from 'zod'
+
+ai.addFunction({
+  name: 'sendEmail',
+  description: '发送电子邮件',
+  parameters: z.object({
+    to: z.string().email({ message: '请输入有效的邮箱地址' }),
+    subject: z.string().min(1, { message: '主题不能为空' }),
+    body: z.string().optional(),
+  }),
+  executor: async (params) => {
+    // 由于有zod验证，这里可以安全地使用参数
+    return { success: true, messageId: '...' }
+  }
+})
+```
+
+### 模型选择
+
+根据任务复杂性选择适当的模型：
+
+```typescript
+// 简单任务使用更快的模型
+const fastModel = new GeminiModel({
+  apiKey: process.env.GEMINI_API_KEY,
+  model: 'gemini-1.5-flash'
+})
+
+// 复杂任务使用更强大的模型
+const powerfulModel = new GeminiModel({
+  apiKey: process.env.GEMINI_API_KEY,
+  model: 'gemini-1.5-pro'
+})
+
+// 根据任务切换模型
+const fastAI = new UnifiedAI(fastModel)
+const powerfulAI = new UnifiedAI(powerfulModel)
 ```
 
 ## 开发
