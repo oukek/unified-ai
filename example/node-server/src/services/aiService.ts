@@ -27,7 +27,11 @@ export interface ChatOptions {
   // 历史消息
   history?: ChatMessage[]
   // 历史记录ID (如果指定，将自动保存对话)
-  historyId?: string
+  historyId: string
+  // 消息ID
+  messageId: string
+  // 助手ID
+  assistantId: string
   // 回调函数
   callback?: (state: CallbackState, data: any) => void
 }
@@ -92,7 +96,6 @@ class AiService {
     title: string
     model: string
     systemMessage?: string
-    initialMessage?: string
   }): Promise<string> {
     return historyService.createHistory(data)
   }
@@ -103,7 +106,7 @@ class AiService {
    * @param options 选项
    * @returns 聊天响应，如果初始化失败则返回null
    */
-  async chat(prompt: string, options?: ChatOptions): Promise<ChatResponse<ResponseFormat.TEXT> | null> {
+  async chat(prompt: string, options: ChatOptions): Promise<ChatResponse<ResponseFormat.TEXT> | null> {
     if (!this.ai) {
       if (!this.initialize()) {
         return null
@@ -111,6 +114,13 @@ class AiService {
     }
 
     try {
+      // 保存用户消息
+      await historyService.addMessageToHistory(options.historyId, {
+        role: 'user',
+        content: prompt,
+        timestamp: Date.now(),
+        id: options.messageId,
+      })
       const response = await this.ai!.unifiedChat(prompt, {
         model: options?.model,
         systemMessage: options?.systemMessage,
@@ -120,25 +130,16 @@ class AiService {
         functionResults?: any[]
       }
 
-      // 如果指定了历史记录ID，保存用户消息和响应
-      if (options?.historyId) {
-        // 保存用户消息
+      // 保存AI响应
+      if (response) {
         await historyService.addMessageToHistory(options.historyId, {
-          role: 'user',
-          content: prompt,
+          role: 'assistant',
+          content: response.content,
           timestamp: Date.now(),
+          functionCalls: response.functionCalls,
+          functionResults: response.functionResults,
+          id: options.assistantId,
         })
-
-        // 保存AI响应
-        if (response) {
-          await historyService.addMessageToHistory(options.historyId, {
-            role: 'assistant',
-            content: response.content,
-            timestamp: Date.now(),
-            functionCalls: response.functionCalls,
-            functionResults: response.functionResults,
-          })
-        }
       }
 
       return response
@@ -176,6 +177,7 @@ class AiService {
           role: 'user',
           content: prompt,
           timestamp: startTime,
+          id: options.messageId,
         })
       }
 
@@ -187,11 +189,13 @@ class AiService {
 
       for await (const chunk of generator) {
         // 收集完整内容和函数调用
-        if (chunk.content)
+        if (chunk.content) {
           fullContent += chunk.content
+        }
 
-        if ('functionCalls' in chunk && Array.isArray(chunk.functionCalls))
+        if ('functionCalls' in chunk && Array.isArray(chunk.functionCalls)) {
           functionCalls = chunk.functionCalls
+        }
 
         yield chunk as ChatStreamChunk<ResponseFormat.TEXT>
 
@@ -203,6 +207,7 @@ class AiService {
             timestamp: Date.now(),
             functionCalls,
             functionResults: 'functionResults' in chunk && Array.isArray(chunk.functionResults) ? chunk.functionResults : undefined,
+            id: options.assistantId,
           })
         }
       }

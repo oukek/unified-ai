@@ -13,7 +13,7 @@ import type {
 import { z } from 'zod'
 import zodToJsonSchema from 'zod-to-json-schema'
 import { BaseModel } from '../base'
-import { ResponseFormat } from '../types'
+import { AgentEventType, ResponseFormat } from '../types'
 import {
   FunctionCallExecutor,
   FunctionCallParser,
@@ -135,7 +135,7 @@ export class UnifiedAI extends BaseModel {
     const originalUserPrompt = prompt
 
     // 通知开始响应
-    callback?.('response_start', { prompt, options })
+    callback?.(AgentEventType.RESPONSE_START, { prompt, options })
 
     try {
       const tools = await this.getAllTools()
@@ -200,13 +200,13 @@ export class UnifiedAI extends BaseModel {
       }
 
       // 通知响应结束
-      callback?.('response_end', { response: finalResponse })
+      callback?.(AgentEventType.RESPONSE_END, { response: finalResponse })
 
       return finalResponse
     }
     catch (error: any) {
       // 通知发生错误
-      callback?.('error', {
+      callback?.(AgentEventType.ERROR, {
         prompt,
         options,
         error: error.message,
@@ -319,7 +319,7 @@ export class UnifiedAI extends BaseModel {
       lastChunk = bufferChunk
 
       // 通知收到响应块
-      callback?.('response_chunk', { chunk: bufferChunk })
+      callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: bufferChunk })
 
       // 返回缓冲区内容
       return bufferChunk
@@ -377,7 +377,7 @@ export class UnifiedAI extends BaseModel {
         }
 
         // 通知收到响应块
-        callback?.('response_chunk', { chunk: intermediateChunk })
+        callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: intermediateChunk })
 
         // 收集中间块以便返回
         intermediateChunks.push(intermediateChunk)
@@ -476,18 +476,24 @@ export class UnifiedAI extends BaseModel {
     }
 
     // 通知递归处理结束
-    callback?.('recursion_end', {
+    callback?.(AgentEventType.RECURSION_END, {
       finalContent: finalChunk.content,
       functionCalls: allFunctionCalls,
-    })
-
-    // 通知响应结束
-    callback?.('response_end', {
       response: {
         content: finalChunk.content,
         isJsonResponse,
-        model: finalChunk.model,
-        functionCalls: allFunctionCalls,
+        model: finalChunk.model as string,
+      },
+      depth: 0,
+      completedFunctionCalls: allFunctionCalls,
+    })
+
+    // 通知响应结束
+    callback?.(AgentEventType.RESPONSE_END, {
+      response: {
+        content: finalChunk.content,
+        isJsonResponse,
+        model: finalChunk.model as string,
       },
     })
 
@@ -585,7 +591,7 @@ export class UnifiedAI extends BaseModel {
     const originalUserPrompt = prompt
 
     // 通知开始响应
-    callback?.('response_start', { prompt, options })
+    callback?.(AgentEventType.RESPONSE_START, { prompt, options })
 
     try {
       // 处理系统消息和提示
@@ -664,9 +670,10 @@ export class UnifiedAI extends BaseModel {
           // 如果有函数调用，处理它们
           if (functionCalls.length > 0 || allFunctionCalls.length > 0) {
             // 通知递归处理开始
-            callback?.('recursion_start', {
+            callback?.(AgentEventType.RECURSION_START, {
               initialContent: fullContent,
               functionCalls: allFunctionCalls.length > 0 ? allFunctionCalls : functionCalls,
+              depth: 0,
             })
 
             // 初始化递归深度和完整响应
@@ -861,12 +868,11 @@ export class UnifiedAI extends BaseModel {
           } as StreamChunkTypeForOptions<T>
 
           // 通知响应结束
-          callback?.('response_end', {
+          callback?.(AgentEventType.RESPONSE_END, {
             response: {
               content: processedContent,
               isJsonResponse,
-              model: lastChunk.model,
-              functionCalls: allFunctionCalls.length > 0 ? allFunctionCalls : undefined,
+              model: lastChunk.model as string,
             },
           })
 
@@ -888,12 +894,11 @@ export class UnifiedAI extends BaseModel {
       }
 
       // 通知响应结束
-      callback?.('response_end', {
+      callback?.(AgentEventType.RESPONSE_END, {
         response: {
           content: lastChunk.content,
           isJsonResponse: lastChunk.isJsonResponse,
-          model: lastChunk.model,
-          functionCalls: allFunctionCalls.length > 0 ? allFunctionCalls : undefined,
+          model: lastChunk.model as string,
         },
       })
 
@@ -908,7 +913,7 @@ export class UnifiedAI extends BaseModel {
     }
     catch (error: any) {
       // 通知发生错误
-      callback?.('error', {
+      callback?.(AgentEventType.ERROR, {
         prompt,
         options,
         error: error.message,

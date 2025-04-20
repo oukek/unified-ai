@@ -1,5 +1,6 @@
 import type { Server } from 'socket.io'
 import type { CallbackState, ChatOptions } from './aiService'
+import { randomUUID } from 'node:crypto'
 import { AgentEventType, ChatRole } from '@oukek/unified-ai'
 import { aiService } from './aiService'
 import { historyService } from './historyService'
@@ -42,12 +43,14 @@ class AiSocketService {
           })
           return
         }
+        // 生成随机唯一messageId
+        const messageId = randomUUID()
+        const assistantId = randomUUID()
 
         try {
           // 如果有historyId，从历史记录中获取history和systemMessage
           let history
           let systemMessage
-          let messageId = ''
 
           if (historyId) {
             const historyDetail = await historyService.getHistoryDetail(historyId)
@@ -65,8 +68,6 @@ class AiSocketService {
               }))
               // 提取系统消息
               systemMessage = historyDetail.systemMessage
-              // 生成新消息ID
-              messageId = `${historyId}_${historyDetail.messages.length + 1}`
             }
           }
 
@@ -75,6 +76,7 @@ class AiSocketService {
             timestamp: Date.now(),
             chatId: historyId,
             messageId,
+            assistantId,
           })
 
           // 定义回调函数处理各种状态
@@ -88,6 +90,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
 
@@ -100,6 +103,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
 
@@ -113,6 +117,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
 
@@ -130,6 +135,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
             }
@@ -141,10 +147,11 @@ class AiSocketService {
             systemMessage,
             history,
             historyId,
+            messageId,
+            assistantId,
             callback,
           }
 
-          console.log('开始生成回复...')
           const generator = aiService.chatStream(prompt, chatOptions)
           let isCompleted = false
 
@@ -154,6 +161,7 @@ class AiSocketService {
               timestamp: Date.now(),
               chatId: historyId || '',
               messageId,
+              assistantId,
             })
             return
           }
@@ -165,6 +173,7 @@ class AiSocketService {
                 timestamp: Date.now(),
                 chatId: historyId,
                 messageId,
+                assistantId,
               })
               break
             }
@@ -176,6 +185,7 @@ class AiSocketService {
               timestamp: Date.now(),
               chatId: historyId,
               messageId,
+              assistantId,
             })
 
             if (chunk.isLast) {
@@ -186,6 +196,7 @@ class AiSocketService {
                 timestamp: Date.now(),
                 chatId: historyId,
                 messageId,
+                assistantId,
               })
             }
           }
@@ -196,6 +207,7 @@ class AiSocketService {
               timestamp: Date.now(),
               chatId: historyId,
               messageId,
+              assistantId,
             })
           }
         }
@@ -205,7 +217,8 @@ class AiSocketService {
             message: '处理流式聊天请求失败',
             timestamp: Date.now(),
             chatId: historyId,
-            messageId: '',
+            messageId,
+            assistantId,
           })
         }
       })
@@ -220,15 +233,18 @@ class AiSocketService {
             timestamp: Date.now(),
             chatId: historyId || '',
             messageId: '',
+            assistantId: '',
           })
           return
         }
+        // 生成随机唯一messageId
+        const messageId = randomUUID()
+        const assistantId = randomUUID()
 
         try {
           // 如果有historyId，从历史记录中获取history和systemMessage
           let history
           let systemMessage
-          let messageId = ''
 
           if (historyId) {
             const historyDetail = await historyService.getHistoryDetail(historyId)
@@ -246,8 +262,6 @@ class AiSocketService {
               }))
               // 提取系统消息
               systemMessage = historyDetail.systemMessage
-              // 生成新消息ID
-              messageId = `${historyId}_${historyDetail.messages.length + 1}`
             }
           }
 
@@ -256,6 +270,7 @@ class AiSocketService {
             timestamp: Date.now(),
             chatId: historyId,
             messageId,
+            assistantId,
           })
 
           // 定义回调函数处理各种状态
@@ -269,6 +284,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
 
@@ -281,6 +297,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
 
@@ -294,6 +311,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
 
@@ -311,6 +329,7 @@ class AiSocketService {
                   timestamp,
                   chatId: historyId,
                   messageId,
+                  assistantId,
                 })
                 break
             }
@@ -322,6 +341,8 @@ class AiSocketService {
             systemMessage,
             history,
             historyId,
+            messageId,
+            assistantId,
             callback,
           }
 
@@ -333,6 +354,7 @@ class AiSocketService {
               timestamp: Date.now(),
               chatId: historyId,
               messageId,
+              assistantId,
             })
             return
           }
@@ -344,6 +366,7 @@ class AiSocketService {
             timestamp: Date.now(),
             chatId: historyId,
             messageId,
+            assistantId,
           })
 
           socket.emit('ai:end', {
@@ -352,6 +375,7 @@ class AiSocketService {
             timestamp: Date.now(),
             chatId: historyId,
             messageId,
+            assistantId,
           })
         }
         catch (error) {
@@ -360,21 +384,21 @@ class AiSocketService {
             message: '处理聊天请求失败',
             timestamp: Date.now(),
             chatId: historyId,
-            messageId: '',
+            messageId,
+            assistantId,
           })
         }
       })
 
       // 创建新的聊天历史记录
       socket.on('ai:create-history', async (data) => {
-        const { title, model, systemMessage, initialMessage } = data
+        const { title, model, systemMessage } = data
 
         try {
           const historyId = await aiService.createChatHistory({
             title,
             model,
             systemMessage,
-            initialMessage,
           })
 
           socket.emit('ai:history-created', {

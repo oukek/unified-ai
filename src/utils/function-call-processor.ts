@@ -6,7 +6,7 @@ import type {
   ChatResponse,
   EnhancedChatResponse,
 } from '../types'
-import { ResponseFormat } from '../types'
+import { AgentEventType, ResponseFormat } from '../types'
 import { FunctionCallExecutor } from './function-call-executor'
 import { FunctionCallParser } from './function-call-parser'
 import { JsonHelper } from './json-helper'
@@ -57,9 +57,11 @@ export class FunctionCallProcessor {
   ): Promise<EnhancedChatResponse<T extends { responseFormat: ResponseFormat.JSON } ? ResponseFormat.JSON : ResponseFormat.TEXT>> {
     if (depth === 0) {
       // 通知递归处理开始
-      callback?.('recursion_start', {
+      callback?.(AgentEventType.RECURSION_START, {
         initialResponse,
         depth,
+        initialContent: initialResponse.content,
+        functionCalls: [],
       })
     }
 
@@ -107,10 +109,12 @@ export class FunctionCallProcessor {
 
       if (depth === 0) {
         // 通知递归处理结束
-        callback?.('recursion_end', {
+        callback?.(AgentEventType.RECURSION_END, {
           response,
           depth,
           completedFunctionCalls: functionCalls,
+          finalContent: response.content,
+          functionCalls,
         })
       }
 
@@ -164,10 +168,12 @@ ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in v
 
       if (depth === 0) {
         // 通知递归处理结束
-        callback?.('recursion_end', {
+        callback?.(AgentEventType.RECURSION_END, {
           response,
           depth: depth + 1,
           completedFunctionCalls: executedCalls,
+          finalContent: response.content,
+          functionCalls: executedCalls,
         })
       }
 
@@ -202,10 +208,12 @@ ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in v
 
     if (depth === 0) {
       // 通知递归处理结束
-      callback?.('recursion_end', {
+      callback?.(AgentEventType.RECURSION_END, {
         response,
         depth: this.maxRecursionDepth,
         completedFunctionCalls: [...executedCalls, ...(nextResponse.functionCalls || [])],
+        finalContent: response.content,
+        functionCalls: [...executedCalls, ...(nextResponse.functionCalls || [])],
       })
     }
 

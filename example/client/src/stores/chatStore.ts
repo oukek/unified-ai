@@ -411,8 +411,8 @@ export const useChatStore = defineStore('chat', () => {
   // 设置 Socket 事件处理
   const setupSocketEvents = (scrollToBottomCallback?: () => void) => {
     // 监听回复开始
-    socketService.on('ai:start', () => {
-      console.log('AI开始生成回复')
+    socketService.on('ai:start', (data) => {
+      console.log('AI开始生成回复', data)
     })
 
     // 监听流式回复片段
@@ -726,9 +726,8 @@ export const useChatStore = defineStore('chat', () => {
       return
 
     // 创建用户消息对象
-    const userMessageId = generateId()
     const userMessage: Message = {
-      id: userMessageId,
+      id: '',
       role: 'user',
       content: userInputText,
       timestamp: Date.now(),
@@ -737,7 +736,7 @@ export const useChatStore = defineStore('chat', () => {
     // 确保有一个有效的历史记录ID
     if (!currentHistoryId.value) {
       // 创建新的历史记录
-      currentHistoryId.value = await createNewHistory(userInputText)
+      currentHistoryId.value = await createNewHistory()
       if (!currentHistoryId.value) {
         return // 创建历史记录失败
       }
@@ -750,9 +749,8 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.push(userMessage)
 
     // 添加助手回复占位
-    const assistantId = generateId()
     const assistantMessage: Message = {
-      id: assistantId,
+      id: '',
       role: 'assistant',
       content: '',
       loading: true,
@@ -774,10 +772,7 @@ export const useChatStore = defineStore('chat', () => {
     socketService.emit('ai:chat-stream', {
       prompt: userInputText,
       model: selectedModel.value,
-      systemMessage: systemMessage.value,
       historyId: currentHistoryId.value,
-      messageId: userMessageId, // 传递消息ID，确保服务器和客户端同步
-      clientAssistantId: assistantId, // 传递客户端生成的助手消息ID
     })
   }
 

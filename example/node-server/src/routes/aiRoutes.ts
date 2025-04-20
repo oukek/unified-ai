@@ -127,7 +127,7 @@ async function getHistoryDetail(req: Request, res: Response): Promise<void> {
  * 创建历史记录
  */
 async function createHistory(req: Request, res: Response): Promise<void> {
-  const { title, model, systemMessage, initialMessage } = req.body
+  const { title, model, systemMessage } = req.body
 
   if (!title || !model) {
     res.status(400).json({
@@ -142,7 +142,6 @@ async function createHistory(req: Request, res: Response): Promise<void> {
       title,
       model,
       systemMessage,
-      initialMessage,
     })
 
     res.json({

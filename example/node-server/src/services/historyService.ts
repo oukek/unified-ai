@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -14,6 +15,9 @@ const HISTORY_DIR = path.join(process.cwd(), '__temp__', 'history')
 
 // Maximum number of conversations to keep in the list
 const MAX_HISTORY_ITEMS = 100
+
+// Toggle for compression (set to false for debugging)
+const USE_COMPRESSION = false
 
 // Types for history management
 export interface ChatHistorySummary {
@@ -71,27 +75,34 @@ class HistoryService {
    * 获取历史记录列表文件路径
    */
   private getHistoryListPath(): string {
-    return path.join(HISTORY_DIR, 'history_list.json.gz')
+    return path.join(HISTORY_DIR, USE_COMPRESSION ? 'history_list.json.gz' : 'history_list.json')
   }
 
   /**
    * 获取历史记录详情文件路径
    */
   private getHistoryDetailPath(id: string): string {
-    return path.join(HISTORY_DIR, `history_${id}.json.gz`)
+    return path.join(HISTORY_DIR, USE_COMPRESSION ? `history_${id}.json.gz` : `history_${id}.json`)
   }
 
   /**
-   * 读取压缩的JSON文件
+   * 读取JSON文件（可能是压缩的）
    */
   private async readCompressedJson<T>(filePath: string, defaultValue: T): Promise<T> {
     try {
       if (!fs.existsSync(filePath))
         return defaultValue
 
-      const compressed = fs.readFileSync(filePath)
-      const buffer = await gunzipAsync(compressed)
-      return JSON.parse(buffer.toString()) as T
+      if (USE_COMPRESSION) {
+        const compressed = fs.readFileSync(filePath)
+        const buffer = await gunzipAsync(compressed)
+        return JSON.parse(buffer.toString()) as T
+      }
+      else {
+        // Read plain JSON file when compression is disabled
+        const data = fs.readFileSync(filePath, 'utf8')
+        return JSON.parse(data) as T
+      }
     }
     catch (error) {
       console.error(`读取文件失败 ${filePath}:`, error)
@@ -100,13 +111,20 @@ class HistoryService {
   }
 
   /**
-   * 写入并压缩JSON文件
+   * 写入JSON文件（可能是压缩的）
    */
   private async writeCompressedJson(filePath: string, data: any): Promise<boolean> {
     try {
       const jsonStr = JSON.stringify(data)
-      const compressed = await gzipAsync(Buffer.from(jsonStr))
-      fs.writeFileSync(filePath, compressed)
+
+      if (USE_COMPRESSION) {
+        const compressed = await gzipAsync(Buffer.from(jsonStr))
+        fs.writeFileSync(filePath, compressed)
+      }
+      else {
+        // Write plain JSON file when compression is disabled
+        fs.writeFileSync(filePath, jsonStr, 'utf8')
+      }
       return true
     }
     catch (error) {
@@ -141,9 +159,8 @@ class HistoryService {
     title: string
     model: string
     systemMessage?: string
-    initialMessage?: string
   }): Promise<string> {
-    const id = Date.now().toString()
+    const id = randomUUID()
     const timestamp = Date.now()
 
     const historyDetail: ChatHistoryDetail = {
@@ -154,16 +171,6 @@ class HistoryService {
       model: data.model,
       systemMessage: data.systemMessage,
       messages: [],
-    }
-
-    // 如果有初始消息，添加到消息列表
-    if (data.initialMessage) {
-      historyDetail.messages.push({
-        id: `${id}_0`,
-        role: 'user',
-        content: data.initialMessage,
-        timestamp,
-      })
     }
 
     // 保存详情
@@ -180,19 +187,14 @@ class HistoryService {
    */
   async addMessageToHistory(
     historyId: string,
-    message: Omit<ChatHistoryMessage, 'id'>,
+    message: ChatHistoryMessage,
   ): Promise<boolean> {
     const historyDetail = await this.getHistoryDetail(historyId)
 
     if (!historyDetail)
       return false
 
-    const messageId = `${historyId}_${historyDetail.messages.length}`
-
-    historyDetail.messages.push({
-      ...message,
-      id: messageId,
-    })
+    historyDetail.messages.push(message)
 
     historyDetail.updatedAt = Date.now()
 
