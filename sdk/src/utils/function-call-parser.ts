@@ -60,6 +60,13 @@ export class FunctionCallParser {
       }
     }
 
+    // 确保所有函数调用都有唯一ID
+    functionCalls.forEach((call, index) => {
+      if (!call.id) {
+        call.id = `func_call_${Date.now()}_${index}`
+      }
+    })
+
     return functionCalls
   }
 
@@ -102,9 +109,11 @@ export class FunctionCallParser {
    * @param functionCalls 存储提取结果的数组
    */
   private static extractBatchFunctionCalls(calls: any[], functionCalls: FunctionCall[]): void {
-    for (const call of calls) {
+    for (let i = 0; i < calls.length; i++) {
+      const call = calls[i]
       if (call && typeof call === 'object' && call.name) {
         functionCalls.push({
+          id: call.id || `func_call_${Date.now()}_${functionCalls.length}`,
           name: call.name,
           arguments: typeof call.arguments === 'string' ? JsonHelper.safeParseJson(call.arguments) : call.arguments,
         })

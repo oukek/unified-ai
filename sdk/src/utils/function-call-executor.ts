@@ -26,6 +26,14 @@ export class FunctionCallExecutor {
       return results
     }
 
+    // 确保每个函数调用都有唯一ID
+    functionCalls.forEach((call, index) => {
+      if (!call.id) {
+        // 如果没有ID，生成一个唯一ID
+        call.id = `func_call_${Date.now()}_${index}`
+      }
+    })
+
     // 通知开始执行函数调用
     callback?.(AgentEventType.FUNCTION_CALL_START, { functionCalls })
 

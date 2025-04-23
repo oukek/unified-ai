@@ -492,6 +492,8 @@ chatWithCustomParams()
 
 ```typescript
 abstract class BaseModel {
+  getModel(model?: string): string
+  
   abstract unifiedChat<T extends ChatOptions | undefined>(
     prompt: string,
     options?: T
@@ -502,20 +504,38 @@ abstract class BaseModel {
     options?: T
   ): AsyncGenerator<StreamChunkTypeForOptions<T>, void, unknown>
   
-  abstract getModel(): string
+  abstract getDefaultModel(): string
+  
+  supportsTools(_model?: string): boolean
+  
+  supportsSystemMessages(_model?: string): boolean
+  
+  convertToolsFormat(tools: AgentFunctionSchema[]): any
 }
 ```
 
 #### 方法
 
+- `getModel(model?: string): string`  
+  获取模型名称。
+  
 - `unifiedChat(prompt: string, options?: ChatOptions): Promise<ChatResponse>`  
   发送聊天请求并获取响应。
   
 - `unifiedChatStream(prompt: string, options?: ChatOptions): AsyncGenerator<ChatStreamChunk>`  
   以流的形式获取聊天响应。
   
-- `getModel(): string`  
-  获取底层模型信息。
+- `getDefaultModel(): string`  
+  获取默认模型名称。
+
+- `supportsTools(_model?: string): boolean`  
+  检查模型是否原生支持工具/函数调用。
+
+- `supportsSystemMessages(_model?: string): boolean`  
+  检查模型是否原生支持系统消息。
+
+- `convertToolsFormat(tools: AgentFunctionSchema[]): any`  
+  将统一格式的工具转换为模型特定的格式。
 
 ### UnifiedAI
 
@@ -585,6 +605,8 @@ interface ChatOptions {
   maxTokens?: number;
   /** 响应格式 */
   responseFormat?: ResponseFormat;
+  /** 系统消息 */
+  systemMessage?: string;
   /** 自定义模型参数 */
   [key: string]: any;
 }
@@ -708,6 +730,111 @@ enum AgentEventType {
   /** 发生错误 */
   ERROR = 'error',
 }
+```
+
+### 回调函数数据类型
+
+回调函数接收不同事件的对应数据类型如下：
+
+```typescript
+/**
+ * 响应开始事件数据
+ */
+interface ResponseStartEventData {
+  /** 提示内容 */
+  prompt: string
+  /** 请求选项 */
+  options?: ChatOptions
+}
+
+/**
+ * 响应结束事件数据
+ */
+interface ResponseEndEventData {
+  /** 响应结果 */
+  response: ChatResponse<any>
+}
+
+/**
+ * 响应块事件数据
+ */
+interface ResponseChunkEventData {
+  /** 响应块 */
+  chunk: {
+    content: string | any
+    isJsonResponse: boolean
+    isLast: boolean
+    model?: string
+  }
+}
+
+/**
+ * 函数调用开始事件数据
+ */
+interface FunctionCallStartEventData {
+  /** 函数调用列表 */
+  functionCalls: FunctionCall[]
+}
+
+/**
+ * 函数调用结束事件数据
+ */
+interface FunctionCallEndEventData {
+  /** 函数调用列表（包含结果） */
+  functionCalls: FunctionCall[]
+}
+
+/**
+ * 递归开始事件数据
+ */
+interface RecursionStartEventData {
+  /** 初始内容 */
+  initialContent: string | Record<string, any>
+  /** 函数调用列表 */
+  functionCalls: FunctionCall[]
+  /** 初始响应 */
+  initialResponse?: ChatResponse<any>
+  /** 深度 */
+  depth: number
+}
+
+/**
+ * 递归结束事件数据
+ */
+interface RecursionEndEventData {
+  /** 最终内容 */
+  finalContent: any
+  /** 函数调用列表 */
+  functionCalls: FunctionCall[]
+  /** 响应 */
+  response: ChatResponse<any>
+  /** 深度 */
+  depth: number
+  /** 完成执行的函数调用 */
+  completedFunctionCalls: FunctionCall[]
+}
+
+/**
+ * 错误事件数据
+ */
+interface ErrorEventData {
+  /** 提示内容 */
+  prompt?: string
+  /** 请求选项 */
+  options?: ChatOptions
+  /** 错误信息 */
+  error: string
+  /** 出错的函数调用 */
+  functionCall?: FunctionCall
+}
+
+/**
+ * 回调函数类型
+ */
+type AgentCallback = <T extends keyof AgentEventDataMap>(
+  state: T,
+  data: AgentEventDataMap[T]
+) => void | Promise<void>
 ```
 
 ## 最佳实践

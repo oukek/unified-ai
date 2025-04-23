@@ -165,6 +165,8 @@ export interface UnifiedAIOptions {
  * 函数调用结构
  */
 export interface FunctionCall {
+  /** 唯一标识符 */
+  id: string
   /** 函数名称 */
   name: string
   /** 函数参数 */
