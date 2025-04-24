@@ -520,8 +520,6 @@ export const useChatStore = defineStore('chat', () => {
       
       // 定义回调函数处理事件
       const callback = (eventType: string, data: any) => {
-        console.log('eventType', eventType)
-        console.log('data', data)
         switch (eventType) {
           case AgentEventType.RESPONSE_CHUNK:
             if (data.chunk && data.chunk.content) {
@@ -565,8 +563,7 @@ export const useChatStore = defineStore('chat', () => {
         history,
         systemMessage: systemMessage || undefined
       }, callback)
-      for await (const chunk of response) {
-        console.log('chunk', chunk)
+      for await (const _ of response) {
       }
       
       

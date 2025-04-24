@@ -185,6 +185,34 @@ ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in v
     // 递归处理：将函数结果提供给模型，可能触发更多函数调用
     const followupResponse = await baseModel.unifiedChat(followupPrompt, options)
 
+    // 检查followupResponse中是否有新的函数调用
+    const newFunctionCalls = FunctionCallParser.parseFunctionCalls(followupResponse.content)
+
+    // 如果没有新的函数调用，直接返回结果
+    if (newFunctionCalls.length === 0) {
+      const response = {
+        ...followupResponse,
+        functionCalls: executedCalls,
+        additionalInfo: {
+          ...initialResponse.additionalInfo,
+          userPrompt: initialResponse.additionalInfo?.userPrompt,
+        },
+      } as EnhancedChatResponse<T extends { responseFormat: ResponseFormat.JSON } ? ResponseFormat.JSON : ResponseFormat.TEXT>
+
+      if (depth === 0) {
+        // 通知递归处理结束
+        callback?.(AgentEventType.RECURSION_END, {
+          response,
+          depth: depth + 1,
+          completedFunctionCalls: executedCalls,
+          finalContent: response.content,
+          functionCalls: executedCalls,
+        })
+      }
+
+      return response
+    }
+
     // 获取后续响应中的函数调用
     const nextResponse = await this.processFunctionCallsRecursively(
       baseModel,

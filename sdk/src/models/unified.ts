@@ -4,7 +4,6 @@ import type {
   AgentFunction,
   AgentFunctionSchema,
   ChatOptions,
-  ChatResponse,
   FunctionCall,
   ResponseTypeForOptions,
   StreamChunkTypeForOptions,
@@ -270,237 +269,6 @@ export class UnifiedAI extends BaseModel {
   }
 
   /**
-   * 处理缓冲区中的函数调用
-   * @param buffer 缓冲区内容
-   * @param allFunctionCalls 所有函数调用记录
-   * @returns 处理后的缓冲区和是否找到新的函数调用
-   */
-  private processFunctionCallsInBuffer(buffer: string, allFunctionCalls: FunctionCall[]) {
-    let foundNewCalls = false
-
-    // 检查缓冲区中是否有函数调用标签
-    if (buffer.includes(FunctionCallParser.FUNCTION_CALL_START_TAG)) {
-      // 如果找到了开始标签，等待结束标签
-      if (buffer.includes(FunctionCallParser.FUNCTION_CALL_END_TAG)) {
-        // 解析缓冲区中的函数调用
-        const functionCalls = FunctionCallParser.parseFunctionCalls(buffer)
-
-        // 如果找到函数调用，添加到列表中
-        if (functionCalls.length > 0) {
-          allFunctionCalls.push(...functionCalls)
-          foundNewCalls = true
-        }
-
-        // 从缓冲区中移除函数调用标签和内容
-        buffer = FunctionCallParser.removeTaggedFunctionCalls(buffer)
-      }
-    }
-
-    return { buffer, foundNewCalls }
-  }
-
-  /**
-   * 发送缓冲区内容给用户
-   * @param buffer 缓冲区内容
-   * @param chunk 当前块
-   * @param lastChunk 最后一个块引用
-   * @param callback 回调函数
-   * @returns 新的最后一个块
-   */
-  private async sendBufferContent(buffer: string, chunk: any, lastChunk: any, callback?: AgentCallback) {
-    if (buffer.length > 0) {
-      const bufferChunk = {
-        ...chunk,
-        content: buffer,
-        isJsonResponse: false,
-        isLast: chunk.isLast,
-      }
-
-      lastChunk = bufferChunk
-
-      // 通知收到响应块
-      callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: bufferChunk })
-
-      // 返回缓冲区内容
-      return bufferChunk
-    }
-    return lastChunk
-  }
-
-  /**
-   * 处理函数调用的递归过程
-   * @param originalUserPrompt 原始用户提示
-   * @param followupPrompt 后续提示
-   * @param systemMessage 系统消息
-   * @param supportsSystemMessages 是否支持系统消息
-   * @param finalOptions 最终选项
-   * @param callback 回调函数
-   * @param lastChunk 最后一个块信息
-   * @param allFunctionCalls 所有函数调用记录
-   * @param options 原始选项
-   * @returns 最终块和内容
-   */
-  private async processRecursiveFunctionCalls<T extends ChatOptions | undefined = undefined>(
-    originalUserPrompt: string,
-    followupPrompt: string,
-    systemMessage: string,
-    supportsSystemMessages: boolean,
-    finalOptions: any,
-    callback?: AgentCallback,
-    lastChunk?: any,
-    allFunctionCalls: FunctionCall[] = [],
-    options?: T,
-  ) {
-    let followupFullContent = ''
-    const intermediateChunks: any[] = []
-
-    // 获取所有中间响应内容
-    for await (const followupChunk of this.baseModel.unifiedChatStream(
-      supportsSystemMessages ? followupPrompt : `${systemMessage}\n\n${followupPrompt}`,
-      finalOptions,
-    )) {
-      // 累积完整响应内容
-      const chunkContent = typeof followupChunk.content === 'object'
-        ? JSON.stringify(followupChunk.content)
-        : followupChunk.content as string
-
-      followupFullContent += chunkContent
-
-      // 如果不是最后一个块，流式返回给用户
-      if (!followupChunk.isLast) {
-        // 将后续请求的中间块传递给用户
-        const intermediateChunk = {
-          content: chunkContent as any,
-          isJsonResponse: followupChunk.isJsonResponse as any,
-          isLast: false,
-          model: followupChunk.model,
-        }
-
-        // 通知收到响应块
-        callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: intermediateChunk })
-
-        // 收集中间块以便返回
-        intermediateChunks.push(intermediateChunk)
-      }
-    }
-
-    // 从最终结果中移除函数调用标签
-    let finalContent = followupFullContent
-    if (typeof finalContent === 'string') {
-      finalContent = FunctionCallParser.removeTaggedFunctionCalls(finalContent)
-    }
-
-    // 检查处理后的finalContent是否包含任何新内容
-    let hasNewContent = true
-
-    // 获取所有中间块的内容
-    const allIntermediateContent = intermediateChunks.map(chunk =>
-      typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content),
-    ).join('')
-
-    // 获取去除中间块内容后的唯一内容
-    let uniqueContent = finalContent
-    if (allIntermediateContent && typeof finalContent === 'string') {
-      // 如果中间块内容与最终内容完全一致，则无新内容
-      if (finalContent === allIntermediateContent) {
-        uniqueContent = ''
-        hasNewContent = false
-      }
-      // 如果最终内容以中间块内容开始，则截取剩余部分
-      else if (finalContent.startsWith(allIntermediateContent)) {
-        uniqueContent = finalContent.substring(allIntermediateContent.length)
-      }
-      // 其他情况，尝试找出最后一个完整句子作为唯一内容
-      else {
-        const sentences = finalContent.split(/(?<=[.!?])\s+/)
-        const intermediateSentences = allIntermediateContent.split(/(?<=[.!?])\s+/)
-
-        if (sentences.length > intermediateSentences.length) {
-          // 获取中间块没有的最后几个句子
-          uniqueContent = sentences.slice(intermediateSentences.length).join(' ')
-        }
-        else {
-          // 找不到明确的新内容
-          uniqueContent = ''
-          hasNewContent = false
-        }
-      }
-    }
-
-    // 如果没有新内容，但最终结果不为空，尝试提取最后一部分
-    if (!hasNewContent && finalContent && typeof finalContent === 'string' && finalContent.trim()) {
-      const contentParts = finalContent.split('\n\n')
-      if (contentParts.length > 0) {
-        // 取最后一个段落
-        uniqueContent = contentParts[contentParts.length - 1]
-
-        // 检查这个段落是否是中间块的最后部分
-        const intermediateEndings = intermediateChunks.length > 0
-          ? intermediateChunks[intermediateChunks.length - 1].content
-          : ''
-
-        // 如果最后部分也重复了，则真的没有新内容
-        if (intermediateEndings && uniqueContent === intermediateEndings) {
-          uniqueContent = ''
-          hasNewContent = false
-        }
-        else {
-          hasNewContent = true
-        }
-      }
-    }
-
-    // 处理JSON格式响应
-    const { processedContent, isJsonResponse } = this.processJsonResponse(
-      uniqueContent, // 使用处理后的唯一内容
-      options && 'responseFormat' in options ? options.responseFormat === ResponseFormat.JSON : false,
-      false,
-    )
-
-    const finalChunk: {
-      content: any
-      isJsonResponse: boolean
-      isLast: boolean
-      model?: string
-      functionCalls?: FunctionCall[]
-      intermediateChunks?: any[]
-      hasNewContent: boolean
-    } = {
-      content: processedContent, // 使用处理后的唯一内容
-      isJsonResponse,
-      isLast: true,
-      model: lastChunk?.model,
-      functionCalls: allFunctionCalls, // 附加所有函数调用信息
-      intermediateChunks, // 收集的中间块，设为可选属性
-      hasNewContent, // 标记是否包含新内容
-    }
-
-    // 通知递归处理结束
-    callback?.(AgentEventType.RECURSION_END, {
-      finalContent: finalChunk.content,
-      functionCalls: allFunctionCalls,
-      response: {
-        content: finalChunk.content,
-        isJsonResponse,
-        model: finalChunk.model as string,
-      },
-      depth: 0,
-      completedFunctionCalls: allFunctionCalls,
-    })
-
-    // 通知响应结束
-    callback?.(AgentEventType.RESPONSE_END, {
-      response: {
-        content: finalChunk.content,
-        isJsonResponse,
-        model: finalChunk.model as string,
-      },
-    })
-
-    return finalChunk
-  }
-
-  /**
    * 处理JSON格式响应
    * @param content 原始内容
    * @param shouldBeJson 是否应该是JSON格式
@@ -537,45 +305,6 @@ export class UnifiedAI extends BaseModel {
   }
 
   /**
-   * 执行函数调用并生成后续提示
-   * @param currentCalls 当前函数调用列表
-   * @param tools 工具列表
-   * @param callback 回调函数
-   * @param originalUserPrompt 原始用户提示
-   * @param currentResponseContent 当前响应内容
-   * @param responseFormat 响应格式
-   * @returns 执行结果和新提示
-   */
-  private async executeFunctionsAndGeneratePrompt(
-    currentCalls: FunctionCall[],
-    tools: AgentFunctionSchema[],
-    callback?: AgentCallback,
-    originalUserPrompt?: string,
-    currentResponseContent?: string,
-    responseFormat?: ResponseFormat,
-  ) {
-    // 执行函数调用
-    const executedCalls = await FunctionCallExecutor.executeFunctionCalls(currentCalls, tools, callback, this.mcpClient)
-
-    // 生成函数结果摘要
-    const resultsSummary = executedCalls.map(call =>
-      `Function: ${call.name}\nParameters: ${JSON.stringify(call.arguments)}\nResult: ${JSON.stringify(call.result)}`,
-    ).join('\n\n')
-
-    // 构建新的提示，包含原始响应和函数执行结果
-    const followupPrompt = originalUserPrompt && currentResponseContent
-      ? PromptEnhancer.createFollowupPrompt(
-          originalUserPrompt,
-          currentResponseContent,
-          resultsSummary,
-          responseFormat,
-        )
-      : resultsSummary
-
-    return { executedCalls, followupPrompt }
-  }
-
-  /**
    * 统一接口：流式返回聊天响应
    * @param prompt 提示/消息内容
    * @param options 聊天请求的可选参数
@@ -586,12 +315,17 @@ export class UnifiedAI extends BaseModel {
     prompt: string,
     options?: T,
     callback?: AgentCallback,
+    depth = 0,
+    sentContents: string[] = [],
+    completedFunctions: FunctionCall[] = [],
   ): AsyncGenerator<StreamChunkTypeForOptions<T>, void, unknown> {
     // 保存原始用户提示，确保它不会在多轮函数调用中丢失
     const originalUserPrompt = prompt
 
     // 通知开始响应
-    callback?.(AgentEventType.RESPONSE_START, { prompt, options })
+    if (depth === 0) {
+      callback?.(AgentEventType.RESPONSE_START, { prompt, options })
+    }
 
     try {
       // 处理系统消息和提示
@@ -605,310 +339,225 @@ export class UnifiedAI extends BaseModel {
       const { finalOptions, enhancedPrompt: finalPrompt }
         = this.prepareOptionsAndPrompt(enhancedOptions, tools, enhancedPrompt, currentModel)
 
-      // 流式获取响应
+      // 流式获取初始响应
       let fullContent = ''
       let buffer = '' // 用于累积内容的缓冲区
-      let lastChunk = {
-        content: '',
-        isLast: false,
-        model: currentModel,
-        isJsonResponse: false,
-      } as StreamChunkTypeForOptions<T>
-
-      // 记录所有函数调用
       const allFunctionCalls: FunctionCall[] = []
 
-      // 存储已发送的完整内容，用于检测重复
-      const allSentContent: string[] = []
-
-      // 最小缓冲区大小，确保能检测到函数调用标签
-      const MIN_BUFFER_SIZE = 22 // <==start_tool_calls==> 长度为21
-
-      // 处理流式响应
+      // 初始响应处理
       for await (const chunk of this.baseModel.unifiedChatStream(finalPrompt, finalOptions)) {
         // 处理直接返回的函数调用
         if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-          // 直接把缓冲区的内容发送了
-          if (buffer.length > 0) {
-            // 检查是否已发送过相同内容
-            if (!this.isContentDuplicate(buffer, allSentContent)) {
-              // 记录已发送内容
-              allSentContent.push(buffer)
+          // 确保不添加重复的函数调用
+          const newChunkCalls = chunk.functionCalls
+            .map(call => call as FunctionCall)
+            .filter(call => !allFunctionCalls.some(existingCall =>
+              this.isFunctionCallsEqual(call, existingCall),
+            ))
 
-              const bufferChunk = await this.sendBufferContent(buffer, chunk, lastChunk, callback)
-              yield bufferChunk as StreamChunkTypeForOptions<T>
+          if (newChunkCalls.length > 0) {
+            allFunctionCalls.push(...newChunkCalls)
+          }
+
+          // 发送缓冲区内容
+          if (buffer.length > 0 && !this.isContentDuplicate(buffer, sentContents)) {
+            sentContents.push(buffer)
+            const bufferChunk = {
+              ...chunk,
+              content: buffer,
+              functionCalls: undefined,
+              isLast: false,
             }
-
-            // 清空缓冲区
+            callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: bufferChunk })
+            yield bufferChunk as unknown as StreamChunkTypeForOptions<T>
             buffer = ''
           }
-          fullContent = ''
-          chunk.content = JSON.stringify({
-            function_calls: chunk.functionCalls,
-          })
         }
 
-        // 在处理过程中始终使用字符串内容
+        // 将当前块内容添加到累积内容中
         const chunkContent = typeof chunk.content === 'object'
           ? JSON.stringify(chunk.content)
           : chunk.content as string
 
         fullContent += chunkContent
-
-        // 将当前块添加到缓冲区
         buffer += chunkContent
 
-        // 处理缓冲区中的函数调用
-        const bufferResult = this.processFunctionCallsInBuffer(buffer, allFunctionCalls)
-        buffer = bufferResult.buffer
+        // 解析缓冲区中的函数调用
+        const parsedCalls = FunctionCallParser.parseFunctionCalls(buffer)
+        if (parsedCalls.length > 0) {
+          // 过滤掉已经存在的函数调用
+          const newParsedCalls = parsedCalls.filter(call =>
+            !allFunctionCalls.some(existingCall =>
+              this.isFunctionCallsEqual(call, existingCall),
+            ),
+          )
 
-        // 如果是最后一个块，处理函数调用
+          if (newParsedCalls.length > 0) {
+            allFunctionCalls.push(...newParsedCalls)
+          }
+
+          buffer = FunctionCallParser.removeTaggedFunctionCalls(buffer)
+        }
+
+        // 检查是否有足够的内容发送
+        if (buffer.length > 20 || chunk.isLast) {
+          if (buffer.length > 0 && !this.isContentDuplicate(buffer, sentContents)) {
+            sentContents.push(buffer)
+            if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+              buffer = ''
+            }
+            const bufferChunk = { ...chunk, content: buffer, isLast: false }
+            callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: bufferChunk })
+            yield bufferChunk as unknown as StreamChunkTypeForOptions<T>
+          }
+          buffer = ''
+        }
+
+        // 如果是最后一个块，准备处理函数调用
         if (chunk.isLast) {
-          // 解析函数调用
+          // 从完整响应中解析函数调用
           const functionCalls = FunctionCallParser.parseFunctionCalls(fullContent)
+          if (functionCalls.length > 0) {
+            // 更严格的去重逻辑：只添加尚未存在的函数调用
+            const newCalls = functionCalls.filter(call =>
+              !allFunctionCalls.some(existingCall =>
+                this.isFunctionCallsEqual(call, existingCall),
+              ),
+            )
+            // 仅添加新的函数调用
+            if (newCalls.length > 0) {
+              allFunctionCalls.push(...newCalls)
+            }
+          }
 
-          // 如果有函数调用，处理它们
-          if (functionCalls.length > 0 || allFunctionCalls.length > 0) {
+          // 如果有函数调用，执行它们并递归处理
+          if (allFunctionCalls.length > 0) {
             // 通知递归处理开始
             callback?.(AgentEventType.RECURSION_START, {
               initialContent: fullContent,
-              functionCalls: allFunctionCalls.length > 0 ? allFunctionCalls : functionCalls,
-              depth: 0,
+              functionCalls: allFunctionCalls,
+              depth,
             })
 
-            // 初始化递归深度和完整响应
-            let currentDepth = 0
-            let currentResponse = {
-              content: fullContent as any,
-              model: lastChunk.model,
-              isJsonResponse: false as any,
-              additionalInfo: {
-                userPrompt: originalUserPrompt,
-                systemMessage,
-              },
-            } as ChatResponse<any>
+            // 执行函数调用
+            const executedCalls = await FunctionCallExecutor.executeFunctionCalls(
+              allFunctionCalls.filter(call => !call.result),
+              tools,
+              callback,
+              this.mcpClient,
+            )
 
-            // 从完整响应中移除函数调用标签
-            if (typeof currentResponse.content === 'string') {
-              currentResponse.content = FunctionCallParser.removeTaggedFunctionCalls(currentResponse.content as string)
+            // 所有已执行的函数调用
+            const allExecutedCalls = [
+              ...allFunctionCalls.filter(call => call.result),
+              ...executedCalls,
+              ...completedFunctions,
+            ]
+
+            // 生成函数结果摘要
+            const resultsSummary = allExecutedCalls.map(call =>
+              `Function: ${call.name}\nParameters: ${JSON.stringify(call.arguments)}\nResult: ${JSON.stringify(call.result)}`,
+            ).join('\n\n')
+
+            // 清理内容中的函数调用标记
+            const cleanContent = FunctionCallParser.removeTaggedFunctionCalls(fullContent)
+
+            // 构建后续提示
+            const followupPrompt = originalUserPrompt
+              ? PromptEnhancer.createFollowupPrompt(
+                  originalUserPrompt,
+                  cleanContent,
+                  resultsSummary,
+                  options?.responseFormat,
+                )
+              : resultsSummary
+
+            // 准备递归选项
+            const followupOptions = { ...options } as T & ChatOptions
+            if (systemMessage && !supportsSystemMessages) {
+              followupOptions.systemMessage = ''
             }
 
-            // 执行递归函数调用处理
-            while (currentDepth < this.functionCallProcessor.maxRecursionDepth) {
-              // 解析当前响应中的函数调用
-              const currentCalls = allFunctionCalls.length > 0
-                ? allFunctionCalls.filter(call => !call.result) // 只处理未执行的函数调用
-                : FunctionCallParser.parseFunctionCalls(currentResponse.content)
-
-              // 清空已处理的函数调用列表
-              allFunctionCalls.length = 0
-
-              if (currentCalls.length === 0) {
-                break
+            // 如果深度太大，停止递归
+            if (depth >= (this.functionCallProcessor.maxRecursionDepth || 25) - 1) {
+              const finalChunk = {
+                content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}` as any,
+                isJsonResponse: false as any,
+                isLast: true,
+                model: currentModel,
+                functionCalls: allExecutedCalls,
+                additionalInfo: {
+                  completedFunctions: completedFunctions.length > 0 ? completedFunctions : undefined,
+                },
               }
 
-              // 执行函数调用并生成后续提示
-              const currentResponseContent = typeof currentResponse.content === 'object'
-                ? JSON.stringify(currentResponse.content, null, 2)
-                : currentResponse.content as string
+              callback?.(AgentEventType.RESPONSE_END, {
+                response: {
+                  content: finalChunk.content,
+                  isJsonResponse: false,
+                  model: finalChunk.model,
+                },
+              })
 
-              const { executedCalls, followupPrompt } = await this.executeFunctionsAndGeneratePrompt(
-                currentCalls,
-                tools,
-                callback,
-                originalUserPrompt,
-                currentResponseContent,
-                options && 'responseFormat' in options ? options.responseFormat : undefined,
-              )
-
-              // 将执行的函数调用添加到所有调用记录中
-              allFunctionCalls.push(...executedCalls)
-
-              // 为后续调用准备选项
-              let followupOptions = { ...finalOptions }
-
-              // 如果模型不支持系统消息，处理系统消息
-              if (systemMessage && !supportsSystemMessages) {
-                followupOptions = {
-                  ...followupOptions,
-                  systemMessage: '', // 清空系统消息，因为会合并到提示中
-                }
-              }
-
-              // 处理递归调用并获取最终结果
-              const recursiveResult = await this.processRecursiveFunctionCalls<T>(
-                originalUserPrompt,
-                followupPrompt,
-                systemMessage,
-                supportsSystemMessages,
-                followupOptions,
-                callback,
-                lastChunk,
-                allFunctionCalls,
-                options,
-              )
-
-              // 更新当前响应和递归深度
-              currentResponse = {
-                content: recursiveResult.content as any,
-                model: lastChunk.model,
-                isJsonResponse: recursiveResult.isJsonResponse as any,
-              } as ChatResponse<any>
-              currentDepth++
-
-              // 如果已达到最大递归深度或没有新的函数调用，输出最终结果
-              if (currentDepth >= this.functionCallProcessor.maxRecursionDepth
-                || FunctionCallParser.parseFunctionCalls(
-                  typeof currentResponse.content === 'string'
-                    ? currentResponse.content
-                    : JSON.stringify(currentResponse.content),
-                ).length === 0) {
-                // 先输出中间块，同时记录已发送内容
-                if (recursiveResult.intermediateChunks) {
-                  for (const chunk of recursiveResult.intermediateChunks) {
-                    const chunkContent = typeof chunk.content === 'string'
-                      ? chunk.content
-                      : JSON.stringify(chunk.content)
-
-                    // 记录已发送内容
-                    if (chunkContent) {
-                      allSentContent.push(chunkContent)
-                    }
-
-                    yield chunk as StreamChunkTypeForOptions<T>
-                  }
-                }
-
-                // 删除中间块属性再输出最终块
-                const finalResult = { ...recursiveResult } as any
-                if (finalResult.intermediateChunks) {
-                  delete finalResult.intermediateChunks
-                }
-
-                // 检查是否有新内容
-                if (!finalResult.hasNewContent) {
-                  // 如果没有新内容，不发送最终块
-                  delete finalResult.hasNewContent
-                  return
-                }
-
-                // 删除标记属性
-                delete finalResult.hasNewContent
-
-                // 确保最终内容不是空的
-                const finalContent = typeof finalResult.content === 'string'
-                  ? finalResult.content.trim()
-                  : finalResult.content
-
-                if (!finalContent && typeof finalResult.content === 'string') {
-                  return // 如果是空内容，不发送
-                }
-
-                // 检查最终内容是否与已发送内容重复
-                const finalContentStr = typeof finalResult.content === 'string'
-                  ? finalResult.content
-                  : JSON.stringify(finalResult.content)
-
-                if (this.isContentDuplicate(finalContentStr, allSentContent)) {
-                  // 如果内容重复，不发送
-                  return
-                }
-
-                yield finalResult as StreamChunkTypeForOptions<T>
-                return
-              }
-            }
-          }
-        }
-
-        // 只有当缓冲区大于最小大小或是最后一个块时才发送内容
-        if (buffer.length >= MIN_BUFFER_SIZE || chunk.isLast) {
-          // 检查缓冲区是否有完整的函数调用标签对
-          while (FunctionCallParser.hasCompleteFunctionCallTags(buffer)) {
-            // 解析并移除所有函数调用
-            const functionCalls = FunctionCallParser.parseFunctionCalls(buffer)
-            if (functionCalls.length > 0) {
-              allFunctionCalls.push(...functionCalls)
-            }
-            buffer = FunctionCallParser.removeTaggedFunctionCalls(buffer)
-          }
-
-          // 发送累积的内容
-          if (buffer.length > 0) {
-            // 检查是否与已发送内容重复
-            if (!this.isContentDuplicate(buffer, allSentContent)) {
-              // 记录已发送内容
-              allSentContent.push(buffer)
-
-              const bufferChunk = await this.sendBufferContent(buffer, chunk, lastChunk, callback)
-              yield bufferChunk as StreamChunkTypeForOptions<T>
-
-              // 更新最后一个块引用
-              lastChunk = bufferChunk
+              yield finalChunk as unknown as StreamChunkTypeForOptions<T>
+              return
             }
 
-            // 清空缓冲区
-            buffer = ''
+            // 递归处理：使用函数调用结果生成新的提示
+            yield* this.unifiedChatStream(
+              supportsSystemMessages ? followupPrompt : `${systemMessage || ''}\n\n${followupPrompt}`,
+              followupOptions,
+              callback,
+              depth + 1,
+              sentContents,
+              allExecutedCalls,
+            )
+            return
           }
         }
       }
 
-      // 在无函数调用或不自动执行函数的情况下处理JSON格式
-      if (options && 'responseFormat' in options && options.responseFormat === ResponseFormat.JSON && !(lastChunk.isJsonResponse as boolean)) {
-        // 尝试将最终内容解析为JSON
-        try {
-          const { processedContent, isJsonResponse } = this.processJsonResponse(fullContent, true, false)
+      // 没有函数调用，确保发送最终结果
+      if (buffer.length > 0 && !this.isContentDuplicate(buffer, sentContents)) {
+        const finalChunk = {
+          content: buffer,
+          isLast: true,
+          model: currentModel,
+          isJsonResponse: false,
+          additionalInfo: {
+            completedFunctions: completedFunctions.length > 0 ? completedFunctions : undefined,
+          },
+        }
 
-          const finalChunk = {
-            content: processedContent as any,
-            isJsonResponse: isJsonResponse as any,
-            isLast: true,
-            model: lastChunk.model,
-            functionCalls: allFunctionCalls.length > 0 ? allFunctionCalls : undefined,
-          } as StreamChunkTypeForOptions<T>
+        // 处理JSON格式
+        if (options?.responseFormat === ResponseFormat.JSON) {
+          try {
+            const { processedContent, isJsonResponse } = this.processJsonResponse(buffer, true, false)
+            finalChunk.content = processedContent
+            finalChunk.isJsonResponse = isJsonResponse
+          }
+          catch (e) {
+            console.error('JSON处理失败', e)
+          }
+        }
 
-          // 通知响应结束
+        callback?.(AgentEventType.RESPONSE_CHUNK, { chunk: finalChunk })
+
+        // 只有在根调用时才通知响应结束
+        if (depth === 0) {
           callback?.(AgentEventType.RESPONSE_END, {
             response: {
-              content: processedContent,
-              isJsonResponse,
-              model: lastChunk.model as string,
+              content: finalChunk.content,
+              isJsonResponse: finalChunk.isJsonResponse,
+              model: finalChunk.model,
+              additionalInfo: {
+                completedFunctions,
+              },
             },
           })
-
-          // 检查是否与已发送内容重复
-          const finalContentStr = typeof finalChunk.content === 'string'
-            ? finalChunk.content
-            : JSON.stringify(finalChunk.content)
-
-          if (!this.isContentDuplicate(finalContentStr, allSentContent)) {
-            yield finalChunk
-          }
-
-          return
         }
-        catch (e: any) {
-          // 如果修复后仍无法解析，返回原始内容
-          console.error(`无法解析或修复JSON响应: ${e.message}`)
-        }
-      }
 
-      // 通知响应结束
-      callback?.(AgentEventType.RESPONSE_END, {
-        response: {
-          content: lastChunk.content,
-          isJsonResponse: lastChunk.isJsonResponse,
-          model: lastChunk.model as string,
-        },
-      })
-
-      // 检查最后一块是否与已发送内容重复
-      const lastChunkContent = typeof lastChunk.content === 'string'
-        ? lastChunk.content
-        : JSON.stringify(lastChunk.content)
-
-      if (!this.isContentDuplicate(lastChunkContent, allSentContent)) {
-        yield lastChunk
+        yield finalChunk as unknown as StreamChunkTypeForOptions<T>
       }
     }
     catch (error: any) {
@@ -975,5 +624,29 @@ export class UnifiedAI extends BaseModel {
     }
 
     return allParagraphsExist
+  }
+
+  /**
+   * 比较两个函数调用是否实质上相同
+   * @param call1 第一个函数调用
+   * @param call2 第二个函数调用
+   * @returns 是否相同
+   */
+  private isFunctionCallsEqual(call1: FunctionCall, call2: FunctionCall): boolean {
+    // 如果两个函数调用的id相同，则认为它们是相同的
+    if (call1.id && call2.id && call1.id === call2.id) {
+      return true
+    }
+
+    // 如果函数名不同，则函数调用一定不同
+    if (call1.name !== call2.name) {
+      return false
+    }
+
+    // 比较参数是否相同
+    const args1Str = JSON.stringify(call1.arguments || {})
+    const args2Str = JSON.stringify(call2.arguments || {})
+
+    return args1Str === args2Str
   }
 }
