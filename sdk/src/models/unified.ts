@@ -16,7 +16,6 @@ import { AgentEventType, ResponseFormat } from '../types'
 import {
   FunctionCallExecutor,
   FunctionCallParser,
-  FunctionCallProcessor,
   JsonHelper,
   ModelHelpers,
   PromptEnhancer,
@@ -29,8 +28,8 @@ import {
 export class UnifiedAI extends BaseModel {
   private baseModel: BaseModel
   private functions: AgentFunction[]
-  private functionCallProcessor: FunctionCallProcessor
   private mcpClient?: Client
+  private maxRecursionDepth = 25
 
   /**
    * 构造函数
@@ -41,9 +40,7 @@ export class UnifiedAI extends BaseModel {
     super()
     this.baseModel = baseModel
     this.functions = options.functions || []
-    this.functionCallProcessor = new FunctionCallProcessor({
-      maxRecursionDepth: options.maxRecursionDepth,
-    })
+    this.maxRecursionDepth = options.maxRecursionDepth || 25
   }
 
   /**
@@ -127,6 +124,8 @@ export class UnifiedAI extends BaseModel {
     prompt: string,
     options?: T,
     callback?: AgentCallback,
+    depth = 0,
+    completedFunctions: FunctionCall[] = [],
   ): Promise<ResponseTypeForOptions<T>> {
     options = options || {} as T
 
@@ -134,25 +133,17 @@ export class UnifiedAI extends BaseModel {
     const originalUserPrompt = prompt
 
     // 通知开始响应
-    callback?.(AgentEventType.RESPONSE_START, { prompt, options })
+    if (depth === 0) {
+      callback?.(AgentEventType.RESPONSE_START, { prompt, options })
+    }
 
     try {
-      const tools = await this.getAllTools()
-
-      if (options?.responseFormat === ResponseFormat.JSON) {
-        prompt += '\n\nPlease return your response in valid JSON format only, without any non-JSON text.'
-      }
-      if (tools.length > 0) {
-        prompt += '\n\n You may need to use tools. Please use tools from the tool list, do not invent tools yourself.'
-
-        if (options?.responseFormat === ResponseFormat.JSON) {
-          prompt += '\n\nIf you need to use tools, ignore the JSON format requirement above.'
-        }
-      }
-
       // 处理系统消息和提示
-      const { enhancedPrompt, enhancedOptions, systemMessage, currentModel }
+      const { enhancedPrompt, enhancedOptions, systemMessage, currentModel, supportsSystemMessages }
         = this.handlePromptAndSystemMessage(prompt, options)
+
+      // 获取所有工具
+      const tools = await this.getAllTools()
 
       // 准备选项和增强提示
       const { finalOptions, enhancedPrompt: finalPrompt }
@@ -161,47 +152,124 @@ export class UnifiedAI extends BaseModel {
       // 调用基础模型
       const response = await this.baseModel.unifiedChat(finalPrompt, finalOptions)
 
-      // 保存原始用户提示和系统消息
-      const initialResponse = {
-        ...response,
-        additionalInfo: {
-          ...response.additionalInfo,
-          userPrompt: originalUserPrompt,
-          systemMessage,
-        },
+      // 解析函数调用
+      const functionCalls = FunctionCallParser.parseFunctionCalls(response.content)
+
+      // 如果没有函数调用或已达到最大递归深度，直接返回响应
+      if (functionCalls.length === 0 || depth >= (this.maxRecursionDepth || 25)) {
+        const finalResponse = {
+          ...response,
+          functionCalls: completedFunctions.length > 0 ? completedFunctions : undefined,
+          additionalInfo: {
+            ...response.additionalInfo,
+            userPrompt: originalUserPrompt,
+            systemMessage,
+          },
+        } as unknown as ResponseTypeForOptions<T>
+
+        // 确保在JSON模式下返回解析后的JSON对象
+        if (options?.responseFormat === ResponseFormat.JSON && !finalResponse.isJsonResponse) {
+          // 如果需要返回JSON但还未解析，在最终结果时解析
+          const contentStr = typeof finalResponse.content === 'string'
+            ? finalResponse.content
+            : JSON.stringify(finalResponse.content)
+
+          try {
+            // 尝试解析JSON
+            (finalResponse as any).content = JsonHelper.safeParseJson(contentStr)
+            finalResponse.isJsonResponse = true as any
+          }
+          catch {
+            console.error(`无法解析或修复JSON响应`)
+          }
+        }
+
+        // 通知响应结束
+        if (depth === 0) {
+          callback?.(AgentEventType.RESPONSE_END, { response: finalResponse })
+        }
+
+        return finalResponse
       }
 
-      const finalResponse = await this.functionCallProcessor.processFunctionCallsRecursively(
-        this.baseModel,
-        initialResponse,
+      // 通知递归处理开始
+      callback?.(AgentEventType.RECURSION_START, {
+        initialContent: response.content,
+        functionCalls,
+        depth,
+      })
+
+      // 执行函数调用
+      const executedCalls = await FunctionCallExecutor.executeFunctionCalls(
+        functionCalls,
         tools,
-        0,
         callback,
-        finalOptions,
         this.mcpClient,
-      ) as unknown as ResponseTypeForOptions<T>
+      )
 
-      // 确保在JSON模式下返回解析后的JSON对象
-      if (options?.responseFormat === ResponseFormat.JSON && !finalResponse.isJsonResponse) {
-        // 如果需要返回JSON但还未解析，在最终结果时解析
-        const contentStr = typeof finalResponse.content === 'string'
-          ? finalResponse.content
-          : JSON.stringify(finalResponse.content)
+      // 所有已执行的函数调用
+      const allExecutedCalls = [
+        ...executedCalls,
+        ...completedFunctions,
+      ]
 
-        try {
-          // 尝试解析JSON
-          (finalResponse as any).content = JsonHelper.safeParseJson(contentStr)
-          finalResponse.isJsonResponse = true as any
-        }
-        catch {
-          console.error(`无法解析或修复JSON响应`)
-        }
+      // 生成函数结果摘要
+      const resultsSummary = allExecutedCalls.map(call =>
+        `Function: ${call.name}\nParameters: ${JSON.stringify(call.arguments)}\nResult: ${JSON.stringify(call.result)}`,
+      ).join('\n\n')
+
+      // 清理内容中的函数调用标记
+      const cleanContent = typeof response.content === 'string'
+        ? FunctionCallParser.removeTaggedFunctionCalls(response.content)
+        : JSON.stringify(response.content)
+
+      // 构建后续提示
+      const followupPrompt = originalUserPrompt
+        ? PromptEnhancer.createFollowupPrompt(
+            originalUserPrompt,
+            cleanContent,
+            resultsSummary,
+            options?.responseFormat,
+          )
+        : resultsSummary
+
+      // 准备递归选项
+      const followupOptions = { ...options } as T & ChatOptions
+      if (systemMessage && !supportsSystemMessages) {
+        followupOptions.systemMessage = ''
       }
 
-      // 通知响应结束
-      callback?.(AgentEventType.RESPONSE_END, { response: finalResponse })
+      // 如果深度太大，停止递归
+      if (depth >= (this.maxRecursionDepth || 25) - 1) {
+        const finalResponse = {
+          content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}`,
+          isJsonResponse: false,
+          model: currentModel,
+          functionCalls: allExecutedCalls,
+          isLast: true,
+          additionalInfo: {
+            completedFunctions: completedFunctions.length > 0 ? completedFunctions : undefined,
+            userPrompt: originalUserPrompt,
+            systemMessage,
+          },
+        } as unknown as ResponseTypeForOptions<T>
 
-      return finalResponse
+        // 通知响应结束
+        if (depth === 0) {
+          callback?.(AgentEventType.RESPONSE_END, { response: finalResponse })
+        }
+
+        return finalResponse
+      }
+
+      // 递归处理：使用函数调用结果生成新的提示
+      return this.unifiedChat(
+        supportsSystemMessages ? followupPrompt : `${systemMessage || ''}\n\n${followupPrompt}`,
+        followupOptions,
+        callback,
+        depth + 1,
+        allExecutedCalls,
+      )
     }
     catch (error: any) {
       // 通知发生错误
@@ -479,7 +547,7 @@ export class UnifiedAI extends BaseModel {
             }
 
             // 如果深度太大，停止递归
-            if (depth >= (this.functionCallProcessor.maxRecursionDepth || 25) - 1) {
+            if (depth >= (this.maxRecursionDepth || 25) - 1) {
               const finalChunk = {
                 content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}` as any,
                 isJsonResponse: false as any,
