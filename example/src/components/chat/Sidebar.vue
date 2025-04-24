@@ -30,7 +30,7 @@
             <span class="date">{{ formatDate(conversation.updatedAt) }}</span>
             <button 
               class="delete-btn" 
-              @click.stop="handleDelete(conversation.id)"
+              @click.stop="openDeleteConfirm(conversation.id)"
               title="删除会话"
               :style="{ opacity: hoveringId === conversation.id ? 1 : 0 }"
             >
@@ -67,6 +67,17 @@
         @close="showToolsModal = false"
       />
     </div>
+    
+    <!-- 自定义确认对话框 -->
+    <ConfirmDialog
+      :is-open="showDeleteConfirm"
+      title="删除会话"
+      message="确定要删除这个会话吗？此操作无法撤销。"
+      confirm-text="删除"
+      cancel-text="取消"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </aside>
 </template>
 
@@ -77,12 +88,17 @@ import { ref } from 'vue'
 import SettingsModal from './SettingsModal.vue'
 import SvgIcon from '@/components/common/SvgIcon.vue'
 import ToolsModal from './ToolsModal.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const showSettingsModal = ref(false)
 const showToolsModal = ref(false)
 const chatStore = useChatStore()
 const { conversations, activeConversationId } = storeToRefs(chatStore)
 const hoveringId = ref<string | null>(null)
+
+// 确认对话框相关
+const showDeleteConfirm = ref(false)
+const conversationToDelete = ref<string | null>(null)
 
 // 控制删除按钮显示
 function showDeleteButton(id: string) {
@@ -103,11 +119,25 @@ function setActiveConversation(id: string) {
   chatStore.setActiveConversation(id)
 }
 
-// 处理删除会话
-function handleDelete(id: string) {
-  if (confirm('确定要删除这个会话吗？')) {
-    chatStore.deleteConversation(id)
+// 打开删除确认对话框
+function openDeleteConfirm(id: string) {
+  conversationToDelete.value = id
+  showDeleteConfirm.value = true
+}
+
+// 确认删除
+function confirmDelete() {
+  if (conversationToDelete.value) {
+    chatStore.deleteConversation(conversationToDelete.value)
+    showDeleteConfirm.value = false
+    conversationToDelete.value = null
   }
+}
+
+// 取消删除
+function cancelDelete() {
+  showDeleteConfirm.value = false
+  conversationToDelete.value = null
 }
 
 // 格式化日期

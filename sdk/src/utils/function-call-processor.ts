@@ -144,7 +144,9 @@ ${initialContent}
 Here are the results of the function calls:
 ${resultsSummary}
 
-Please generate a final response that incorporates all this information. If you need to call additional functions, please clearly indicate this.
+Please generate a final response that incorporates all this information. 
+If you need to call additional functions, please clearly indicate this.
+If you still need to continue using the tool, please continue to use it instead of directly generating the final result.
 ${options?.responseFormat === ResponseFormat.JSON ? '\nReturn your response in valid JSON format.' : ''}
 `
 // 如果模型不支持工具，使用提示增强

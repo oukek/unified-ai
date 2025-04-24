@@ -1,4 +1,5 @@
 import axios from 'axios'
+import dayjs from 'dayjs'
 
 export interface ToolParameter {
   type: string
@@ -122,8 +123,39 @@ export const searchWebByUrl: Tool = {
   },
 }
 
+export const getTime: Tool = {
+  name: 'getTime',
+  description: '获取指定时间，可以增加或减少天数，如果增加或减少天数为0，则返回当前时间',
+  parameters: {
+    addDays: {
+      type: 'number',
+      description: '要增加的天数',
+    },
+    subDays: {
+      type: 'number',
+      description: '要减少的天数',
+    },
+    required: ['addDays', 'subDays'],
+  },
+  executor: async (params: Record<string, any>) => {
+    const addDays = params.addDays as number
+    const subDays = params.subDays as number
+    const time = dayjs()
+    if (addDays !== 0) {
+      time.add(addDays, 'day')
+    }
+    if (subDays !== 0) {
+      time.subtract(subDays, 'day')
+    }
+    return {
+      time: time.format('YYYY-MM-DD HH:mm:ss'),
+    }
+  },
+}
+
 // 所有可用工具列表
 export const availableTools: Tool[] = [
   searchByGoogle,
-  searchWebByUrl
+  searchWebByUrl,
+  getTime
 ] 

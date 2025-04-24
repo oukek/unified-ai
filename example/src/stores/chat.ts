@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { getAllData, saveData, deleteData, DB } from '../utils/db'
 import { useSettingsStore } from './settings'
 import { useToolsStore } from './tools'
-import { GeminiModel, UnifiedAI, ChatRole } from '@oukek/unified-ai'
+import { GeminiModel, UnifiedAI, ChatRole, AgentEventType } from '@oukek/unified-ai'
 
 export interface FunctionCall {
   id?: string // 用于标识和展开/折叠状态跟踪
@@ -41,74 +41,67 @@ export interface Conversation {
 
 // 序列化会话数据（将Date对象转为字符串）
 function serializeConversation(conversation: Conversation) {
-  return {
-    ...conversation,
-    createdAt: conversation.createdAt.toISOString(),
-    updatedAt: conversation.updatedAt.toISOString(),
-    messages: conversation.messages.map(msg => {
-      // 深拷贝消息对象，避免修改原始对象
-      const serializedMsg = {
-        ...msg,
-        timestamp: msg.timestamp.toISOString(),
+  try {
+    const sanitizeObject = (obj: any): any => {
+      if (!obj || typeof obj !== 'object') return obj;
+      
+      // 处理数组
+      if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeObject(item));
       }
       
-      // 处理函数调用 - 确保删除所有不可序列化的属性
-      if (msg.functionCalls && msg.functionCalls.length > 0) {
-        serializedMsg.functionCalls = msg.functionCalls.map(call => {
-          const cleanCall = { ...call }
-          // 删除可能导致序列化问题的属性
-          delete cleanCall.executing
-          
-          // 安全处理参数和结果
+      // 处理普通对象
+      const result: Record<string, any> = {};
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
           try {
-            cleanCall.arguments = JSON.parse(JSON.stringify(cleanCall.arguments || {}))
-            if (cleanCall.result !== undefined) {
-              cleanCall.result = JSON.parse(JSON.stringify(cleanCall.result))
+            // 跳过函数和特定不可序列化的属性
+            if (typeof obj[key] === 'function' || key === 'executing' || key === 'isLoading') {
+              continue;
             }
+            result[key] = sanitizeObject(obj[key]);
           } catch (err) {
-            console.warn('函数调用参数或结果无法序列化，已替换为空对象', err)
-            cleanCall.arguments = {}
-            cleanCall.result = undefined
+            console.warn(`无法序列化属性 ${key}，已跳过`, err);
           }
-          
-          return cleanCall
-        })
+        }
       }
-      
-      // 处理内容块 - 确保删除所有不可序列化的属性
-      if (msg.blocks && msg.blocks.length > 0) {
-        serializedMsg.blocks = msg.blocks.map(block => {
-          const cleanBlock = { ...block }
-          
-          // 如果是工具调用块，安全处理data属性
-          if (block.type === 'tool' && block.data) {
-            const cleanData = { ...block.data }
-            delete cleanData.executing
-            
-            // 安全处理参数和结果
-            try {
-              cleanData.arguments = JSON.parse(JSON.stringify(cleanData.arguments || {}))
-              if (cleanData.result !== undefined) {
-                cleanData.result = JSON.parse(JSON.stringify(cleanData.result))
-              }
-            } catch (err) {
-              console.warn('内容块数据无法序列化，已替换为空对象', err)
-              cleanData.arguments = {}
-              cleanData.result = undefined
-            }
-            
-            cleanBlock.data = cleanData
-          }
-          
-          return cleanBlock
-        })
-      }
-      
-      // 移除不可序列化的属性
-      delete serializedMsg.isLoading
-      
-      return serializedMsg
-    })
+      return result;
+    };
+
+    const serialized = {
+      ...sanitizeObject(conversation),
+      createdAt: conversation.createdAt.toISOString(),
+      updatedAt: conversation.updatedAt.toISOString(),
+      messages: conversation.messages.map(msg => {
+        const serializedMsg = {
+          ...sanitizeObject(msg),
+          timestamp: msg.timestamp.toISOString(),
+        };
+        return serializedMsg;
+      })
+    };
+
+    // 最后验证整个对象是否可序列化
+    JSON.parse(JSON.stringify(serialized));
+    
+    return serialized;
+  } catch (error) {
+    console.error('序列化会话数据失败:', error);
+    
+    // 返回基本数据以确保至少能保存核心信息
+    return {
+      id: conversation.id,
+      title: conversation.title,
+      createdAt: conversation.createdAt.toISOString(),
+      updatedAt: conversation.updatedAt.toISOString(),
+      systemMessage: conversation.systemMessage,
+      messages: conversation.messages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp.toISOString()
+      }))
+    };
   }
 }
 
@@ -480,12 +473,6 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
       
-      // 发送流式请求到AI
-      const stream = ai.unifiedChatStream(content, {
-        history,
-        systemMessage: systemMessage || undefined
-      })
-      
       // 创建一个直接更新UI但不写入数据库的函数
       const updateUI = () => {
         // 只更新内存中的消息对象，不写入数据库
@@ -531,51 +518,57 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
       
-      // 处理流式响应
-      for await (const chunk of stream) {
-        // 处理函数调用（可能在任何一个块中出现）
-        if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-          // 处理每个函数调用
-          for (const call of chunk.functionCalls) {
-            // 转换为我们自己的FunctionCall类型
-            const functionCall: FunctionCall = {
-              name: call.name,
-              arguments: call.arguments,
-              result: call.result,
-              id: Date.now() + '-' + Math.random().toString(36).substring(2, 9) // 生成唯一ID
-            }
-            
-            // 避免重复添加相同的函数调用
-            const isDuplicate = contentBlocks.some(block => 
-              block.type === 'tool' && 
-              block.data?.name === functionCall.name && 
-              JSON.stringify(block.data?.arguments) === JSON.stringify(functionCall.arguments)
-            )
-            
-            if (!isDuplicate) {
-              // 添加工具调用块
-              contentBlocks.push({
-                type: 'tool',
-                data: functionCall
-              })
-              
-              // 更新UI，不写入数据库
+      // 定义回调函数处理事件
+      const callback = (eventType: string, data: any) => {
+        console.log('eventType', eventType)
+        console.log('data', data)
+        switch (eventType) {
+          case AgentEventType.RESPONSE_CHUNK:
+            if (data.chunk && data.chunk.content) {
+              fullContent += data.chunk.content
+              addTextBlock(data.chunk.content)
               updateUI()
             }
-          }
-        }
-        
-        // 累积内容
-        if (typeof chunk.content === 'string' && chunk.content) {
-          fullContent += chunk.content
-          
-          // 添加文本内容块
-          addTextBlock(chunk.content)
-          
-          // 更新UI，不写入数据库
-          updateUI()
+            break
+            
+          case AgentEventType.FUNCTION_CALL_START:
+            if (data.functionCalls && data.functionCalls.length > 0) {
+              for (const call of data.functionCalls) {
+                contentBlocks.push({
+                  type: 'tool',
+                  data: call
+                })
+                updateUI()
+              }
+            }
+            break
+            
+          case AgentEventType.FUNCTION_CALL_END:
+            if (data.functionCalls && data.functionCalls.length > 0) {
+              // 查找并更新对应的函数调用结果
+              for (const call of data.functionCalls) {
+                const blockIndex = contentBlocks.findIndex(
+                  block => block.type === 'tool' && block.data?.id === call.id
+                )
+                if (blockIndex !== -1) {
+                  contentBlocks[blockIndex].data = call
+                  updateUI()
+                }
+              }
+            }
+            break
         }
       }
+      
+      // 使用回调发送流式请求到AI
+      const response = await ai.unifiedChatStream(content, {
+        history,
+        systemMessage: systemMessage || undefined
+      }, callback)
+      for await (const chunk of response) {
+        console.log('chunk', chunk)
+      }
+      
       
       // 流结束后，将最终消息保存到数据库
       // 移除加载状态
@@ -593,7 +586,7 @@ export const useChatStore = defineStore('chat', () => {
       if (activeConversation.value.messages.length <= 2) {
         try {
           const titleAI = createAI(apiKey)
-          const titleResponse = await titleAI.unifiedChat(`基于以下对话生成一个简短的标题（不超过15个字符）：\n用户: ${content}\n助手: ${fullContent.substring(0, 100)}`)
+          const titleResponse = await titleAI.unifiedChat(`基于以下对话生成一个简短的标题（不超过15个字符），请严格返回一个简短的标题，不要返回任何其他内容：\n用户: ${content}\n助手: ${fullContent.substring(0, 100)}`)
           
           const title = titleResponse.content as string
           await updateConversationTitle(activeConversation.value.id, title)
