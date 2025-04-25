@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 export * from './chat'
 export * from './settings'
 export * from './tools'
+export * from './user'
 
 const pinia = createPinia()
 

@@ -58,6 +58,19 @@
           <span>设置</span>
         </button>
       </div>
+      
+      <div class="user-profile" v-if="userStore.isLoggedIn">
+        <div class="user-avatar">
+          <SvgIcon name="user" :size="28" color="#666" />
+        </div>
+        <div class="user-info">
+          <div class="username">{{ userStore.currentUser?.username }}</div>
+          <button class="logout-btn" @click="showLogoutConfirm = true">
+            退出登录
+          </button>
+        </div>
+      </div>
+      
       <SettingsModal 
         :is-open="showSettingsModal" 
         @close="showSettingsModal = false" 
@@ -78,11 +91,23 @@
       @confirm="confirmDelete"
       @cancel="cancelDelete"
     />
+    
+    <!-- 退出登录确认对话框 -->
+    <ConfirmDialog
+      :is-open="showLogoutConfirm"
+      title="退出登录"
+      message="确定要退出登录吗？"
+      confirm-text="退出"
+      cancel-text="取消"
+      @confirm="logout"
+      @cancel="() => showLogoutConfirm = false"
+    />
   </aside>
 </template>
 
 <script setup lang="ts">
 import { useChatStore } from '@/stores/chat'
+import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
 import SettingsModal from './SettingsModal.vue'
@@ -92,7 +117,9 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const showSettingsModal = ref(false)
 const showToolsModal = ref(false)
+const showLogoutConfirm = ref(false)
 const chatStore = useChatStore()
+const userStore = useUserStore()
 const { conversations, activeConversationId } = storeToRefs(chatStore)
 const hoveringId = ref<string | null>(null)
 
@@ -138,6 +165,12 @@ function confirmDelete() {
 function cancelDelete() {
   showDeleteConfirm.value = false
   conversationToDelete.value = null
+}
+
+// 退出登录
+function logout() {
+  userStore.logout()
+  showLogoutConfirm.value = false
 }
 
 // 格式化日期
@@ -227,7 +260,6 @@ function formatDate(date: Date): string {
       margin: 0;
       
       li {
-        margin-bottom: 8px;
         border-radius: 4px;
         transition: background-color 0.2s;
         
@@ -310,6 +342,7 @@ function formatDate(date: Date): string {
     .footer-buttons {
       display: flex;
       gap: 10px;
+      margin-bottom: 16px;
       
       .tools-btn, .settings-btn {
         display: flex;
@@ -335,6 +368,53 @@ function formatDate(date: Date): string {
           justify-content: center;
           width: 20px;
           height: 20px;
+        }
+      }
+    }
+    
+    .user-profile {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      background-color: #edf7ed;
+      border-radius: 8px;
+      
+      .user-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background-color: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+      }
+      
+      .user-info {
+        flex: 1;
+        overflow: hidden;
+        
+        .username {
+          font-weight: 600;
+          margin-bottom: 4px;
+          font-size: 14px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        
+        .logout-btn {
+          background: none;
+          border: none;
+          color: #f44336;
+          font-size: 12px;
+          padding: 0;
+          cursor: pointer;
+          text-decoration: underline;
+          
+          &:hover {
+            color: darken(#f44336, 10%);
+          }
         }
       }
     }

@@ -58,7 +58,7 @@
       <div class="input-container">
         <MessageInput @send="handleSendMessage" />
         <div class="input-tips">
-          提示: 按 Enter 发送, Shift+Enter 换行
+          提示: 按 Shift+Enter 发送, Enter 换行
         </div>
       </div>
     </div>
