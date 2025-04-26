@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api'
 import type { User } from '@/api/types'
+import { disconnectSocket } from '@/utils/socket'
 
 export const useUserStore = defineStore('user', () => {
   // 用户信息
@@ -116,6 +117,9 @@ export const useUserStore = defineStore('user', () => {
     // 清除本地存储
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    
+    // 断开Socket连接
+    disconnectSocket()
   }
   
   return {

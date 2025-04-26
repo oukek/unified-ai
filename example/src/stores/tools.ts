@@ -1,21 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { saveData, getData, DB, encrypt, decrypt } from '../utils/db'
-import { availableTools } from '../utils/tools'
-
-// 确保 DB.STORES.TOOLS 存在
-interface ExtendedStoreNames {
-  TOOLS: string
-}
-
-// 扩展 DB.STORES 类型
-const ExtendedDB = {
-  ...DB,
-  STORES: {
-    ...DB.STORES,
-    TOOLS: 'tools'
-  } as typeof DB.STORES & ExtendedStoreNames
-}
+import toolApi from '../api/modules/tool'
+import type { Tool as ApiTool } from '../api/types'
+import type { Tool } from '../utils/tools'
 
 interface ToolConfig {
   enabled: boolean
@@ -24,15 +11,17 @@ interface ToolConfig {
 
 export const useToolsStore = defineStore('tools', () => {
   // 工具配置状态
+  const tools = ref<Tool[]>([])
   const toolConfigs = ref<Record<string, ToolConfig>>({})
   const isLoading = ref<boolean>(false)
+  const initialized = ref<boolean>(false)
   
   // 获取所有可用工具
-  const allTools = computed(() => availableTools)
+  const allTools = computed(() => tools.value)
   
   // 获取已启用的工具
   const enabledTools = computed(() => {
-    return allTools.value.filter(tool => {
+    return tools.value.filter(tool => {
       const config = toolConfigs.value[tool.name]
       if (!config) return false
       
@@ -54,7 +43,7 @@ export const useToolsStore = defineStore('tools', () => {
   
   // 检查工具是否可用（配置完整）
   function isToolAvailable(toolName: string): boolean {
-    const tool = allTools.value.find(t => t.name === toolName)
+    const tool = tools.value.find(t => t.name === toolName)
     if (!tool) return false
     
     // 如果没有必需配置，则直接可用
@@ -75,27 +64,23 @@ export const useToolsStore = defineStore('tools', () => {
     return true
   }
   
-  // 保存工具配置
+  // 保存工具配置到服务器
   async function saveToolConfig(toolName: string, config: ToolConfig): Promise<void> {
     try {
-      // 加密配置值
-      const encryptedConfig: ToolConfig = {
-        enabled: config.enabled,
-        configs: {}
-      }
-      
-      for (const [key, value] of Object.entries(config.configs)) {
-        encryptedConfig.configs[key] = encrypt(value)
-      }
-      
       // 更新内存中的配置
       toolConfigs.value[toolName] = config
       
-      // 保存到数据库
-      await saveData(ExtendedDB.STORES.TOOLS, { 
-        key: toolName, 
-        value: JSON.stringify(encryptedConfig) 
-      })
+      // 准备工具配置数据
+      const enabledTools = Object.entries(toolConfigs.value)
+        .filter(([_, config]) => config.enabled)
+        .map(([name]) => name)
+      
+      const toolConfigsData = Object.fromEntries(
+        Object.entries(toolConfigs.value).map(([name, config]) => [name, config.configs])
+      )
+      
+      // 保存到服务器
+      await toolApi.updateUserTools(enabledTools, toolConfigsData)
     } catch (error) {
       console.error('保存工具配置失败:', error)
       throw error
@@ -130,55 +115,61 @@ export const useToolsStore = defineStore('tools', () => {
     }
   }
   
-  // 获取工具配置
-  async function getToolConfig(toolName: string): Promise<ToolConfig | null> {
-    try {
-      const data = await getData<{key: string, value: string}>(ExtendedDB.STORES.TOOLS, toolName)
-      if (data && data.value) {
-        try {
-          // 解析配置
-          const encryptedConfig = JSON.parse(data.value) as ToolConfig
-          
-          // 解密配置值
-          const decryptedConfig: ToolConfig = {
-            enabled: encryptedConfig.enabled,
-            configs: {}
-          }
-          
-          for (const [key, value] of Object.entries(encryptedConfig.configs)) {
-            decryptedConfig.configs[key] = decrypt(value)
-          }
-          
-          return decryptedConfig
-        } catch (error) {
-          console.error('解析工具配置失败:', error)
-          return null
-        }
+  // 将API返回的工具转换为本地工具对象
+  function convertApiToolToTool(apiTool: ApiTool): Tool {
+    return {
+      name: apiTool.name,
+      description: apiTool.description,
+      parameters: apiTool.parameters,
+      // 将复杂的configRequired对象转换为简单的字符串数组
+      configRequired: apiTool.configRequired ? apiTool.configRequired.map(item => item.name) : undefined,
+      // 存储原始的configRequired，以便在UI中显示提示信息
+      configDescriptions: apiTool.configRequired,
+      executor: async (_: Record<string, any>) => {
+        // 这里可以实现通过API调用工具的逻辑
+        // 示例实现，根据实际需求修改
+        return { result: `执行工具 ${apiTool.name}` };
       }
-      return null
-    } catch (error) {
-      console.error('获取工具配置失败:', error)
-      return null
-    }
+    };
   }
   
   // 初始化工具配置
   async function initialize() {
-    isLoading.value = true
+    // 防止重复初始化
+    if (initialized.value || isLoading.value) {
+      return;
+    }
+    
+    isLoading.value = true;
+    console.log('初始化工具配置...');
+    
     try {
-      // 为每个工具加载配置
-      for (const tool of allTools.value) {
-        const config = await getToolConfig(tool.name)
-        if (config) {
-          toolConfigs.value[tool.name] = config
-        } else {
-          // 创建默认配置
+      // 1. 先获取后端支持的所有工具
+      const toolsResponse = await toolApi.getAllTools()
+      if (toolsResponse.data) {
+        // 将API工具转换为本地工具对象
+        tools.value = toolsResponse.data.map(convertApiToolToTool)
+      }
+      
+      // 2. 获取用户已启用的工具配置
+      const userToolsResponse = await toolApi.getUserTools()
+      if (userToolsResponse.data) {
+        const { enabledTools: userEnabledTools, toolConfigs: userToolConfigs } = userToolsResponse.data
+        
+        // 初始化每个工具的配置
+        for (const tool of tools.value) {
+          const isEnabled = userEnabledTools.includes(tool.name)
+          const configs = userToolConfigs[tool.name] || {}
+          
           toolConfigs.value[tool.name] = {
-            enabled: false,
-            configs: {}
+            enabled: isEnabled,
+            configs
           }
         }
       }
+      
+      initialized.value = true;
+      console.log('工具配置初始化完成');
     } catch (error) {
       console.error('初始化工具配置失败:', error)
     } finally {
@@ -189,7 +180,7 @@ export const useToolsStore = defineStore('tools', () => {
   // 执行工具
   async function executeTool(toolName: string, params: Record<string, any>): Promise<any> {
     // 查找工具
-    const tool = allTools.value.find(t => t.name === toolName)
+    const tool = tools.value.find(t => t.name === toolName)
     if (!tool) {
       throw new Error(`工具 "${toolName}" 不存在`)
     }
@@ -225,14 +216,15 @@ export const useToolsStore = defineStore('tools', () => {
     })
   }
   
-  // 自动初始化
-  initialize()
+  // 不再自动初始化
+  // initialize()
   
   return {
     allTools,
     enabledTools,
     toolConfigs,
     isLoading,
+    initialized,
     isToolAvailable,
     toggleToolEnabled,
     setToolConfigItem,
@@ -240,17 +232,4 @@ export const useToolsStore = defineStore('tools', () => {
     getEnabledTools,
     initialize
   }
-})
-
-// 修改数据库定义，添加工具存储
-import '../utils/db'
-declare module '../utils/db' {
-  interface StoreNames {
-    TOOLS: string
-  }
-}
-
-// 添加工具存储定义，如果不存在
-if (!DB.STORES.TOOLS) {
-  DB.STORES.TOOLS = 'tools'
-} 
+}) 

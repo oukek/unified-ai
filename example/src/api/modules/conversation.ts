@@ -1,5 +1,5 @@
 import api from '../instance';
-import type { Conversation, ChatMessage, ContentBlock, FunctionCall, ApiResponse } from '../types';
+import type { Conversation, ChatMessage, ApiResponse } from '../types';
 
 /**
  * 会话相关API
@@ -52,30 +52,7 @@ export const conversationApi = {
    */
   getMessages: (conversationId: string): ApiResponse<ChatMessage[]> => {
     return api.get(`/conversations/${conversationId}/messages`);
-  },
-
-  /**
-   * 添加消息到会话
-   * @param conversationId 会话ID
-   * @param content 消息内容
-   * @param role 消息角色
-   * @param blocks 内容块（可选）
-   * @param functionCalls 函数调用（可选）
-   */
-  addMessage: (
-    conversationId: string, 
-    content: string, 
-    role: 'user' | 'assistant',
-    blocks?: ContentBlock[],
-    functionCalls?: FunctionCall[]
-  ): ApiResponse<ChatMessage> => {
-    return api.post(`/conversations/${conversationId}/messages`, {
-      content,
-      role,
-      blocks,
-      functionCalls
-    });
-  },
+  }
 };
 
 export default conversationApi; 

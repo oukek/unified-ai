@@ -6,12 +6,18 @@ export interface ToolParameter {
   description: string
 }
 
+export interface ConfigInfo {
+  name: string
+  description: string
+}
+
 export interface Tool {
   name: string
   description: string
   parameters: Record<string, any>
   executor: (params: Record<string, any>) => Promise<any>
   configRequired?: string[] // 需要配置的项
+  configDescriptions?: ConfigInfo[] // 配置项的描述信息
 }
 
 export const searchByGoogle: Tool = {

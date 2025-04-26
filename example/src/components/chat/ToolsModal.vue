@@ -43,7 +43,13 @@
                 :key="configKey"
                 class="config-item"
               >
-                <label :for="'config-' + tool.name + '-' + configKey">{{ configKey }}</label>
+                <div class="config-label">
+                  <label :for="'config-' + tool.name + '-' + configKey">{{ configKey }}</label>
+                  <div class="tooltip-wrapper" v-if="getConfigDescription(tool, configKey)">
+                    <span class="tooltip-icon">?</span>
+                    <div class="tooltip-text">{{ getConfigDescription(tool, configKey) }}</div>
+                  </div>
+                </div>
                 <input 
                   :id="'config-' + tool.name + '-' + configKey" 
                   type="text" 
@@ -74,6 +80,8 @@
 import { ref, onMounted } from 'vue'
 import { useToolsStore } from '@/stores/tools'
 import SvgIcon from '@/components/common/SvgIcon.vue'
+import type { Tool } from '@/utils/tools'
+import { showError, showSuccess } from '@/utils/toast'
 
 defineProps<{
   isOpen: boolean
@@ -95,6 +103,15 @@ function getToolConfig(toolName: string) {
 // 检查工具是否可用（配置完整）
 function isToolAvailable(toolName: string): boolean {
   return toolsStore.isToolAvailable(toolName)
+}
+
+// 获取配置项的描述
+function getConfigDescription(tool: Tool, configKey: string): string | undefined {
+  if (tool.configDescriptions) {
+    const configInfo = tool.configDescriptions.find(item => item.name === configKey)
+    return configInfo?.description
+  }
+  return undefined
 }
 
 // 切换工具展开状态
@@ -131,11 +148,13 @@ function updateToolConfig(toolName: string, configKey: string, event: Event): vo
 async function saveSettings(): Promise<void> {
   isLoading.value = true
   try {
-    await toolsStore.initialize()
+    // 不再调用初始化函数，直接关闭窗口
+    // await toolsStore.initialize()
+    showSuccess('工具配置保存成功')
     closeModal()
   } catch (error) {
     console.error('保存工具配置失败:', error)
-    alert('保存工具配置失败，请重试。')
+    showError('保存工具配置失败，请重试')
   } finally {
     isLoading.value = false
   }
@@ -284,11 +303,69 @@ onMounted(async () => {
             margin-bottom: 0;
           }
           
-          label {
-            display: block;
+          .config-label {
+            display: flex;
+            align-items: center;
             margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 500;
+            
+            label {
+              font-size: 13px;
+              font-weight: 500;
+              margin-right: 6px;
+            }
+            
+            .tooltip-wrapper {
+              position: relative;
+              display: inline-block;
+              
+              .tooltip-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background-color: #e0e0e0;
+                color: #666;
+                font-size: 11px;
+                cursor: help;
+              }
+              
+              .tooltip-text {
+                visibility: hidden;
+                position: absolute;
+                bottom: 125%;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: #333;
+                color: #fff;
+                text-align: center;
+                border-radius: 4px;
+                padding: 6px 10px;
+                width: 200px;
+                z-index: 1;
+                opacity: 0;
+                transition: opacity 0.3s;
+                font-size: 12px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                
+                &::after {
+                  content: "";
+                  position: absolute;
+                  top: 100%;
+                  left: 50%;
+                  margin-left: -5px;
+                  border-width: 5px;
+                  border-style: solid;
+                  border-color: #333 transparent transparent transparent;
+                }
+              }
+              
+              &:hover .tooltip-text {
+                visibility: visible;
+                opacity: 1;
+              }
+            }
           }
           
           input {
