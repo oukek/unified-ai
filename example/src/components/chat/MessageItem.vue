@@ -44,7 +44,7 @@
               >
                 <div class="function-call-header">
                   <SvgIcon name="tool" :size="16" color="#5178e7" />
-                  <span class="function-name">{{ block.data.name }}</span>
+                  <span class="function-name">{{ block.data.name }} {{ block.data.executionTime ? `(执行时长:${block.data.executionTime}ms)` : '' }}</span>
                   
                   <div class="function-status">
                     <!-- 执行中状态 -->
@@ -162,6 +162,7 @@ interface FunctionCall {
   id?: string // 添加ID用于展开/折叠状态跟踪
   name: string
   arguments: Record<string, any>
+  executionTime?: number
   result?: any
   executing?: boolean // 是否正在执行中
 }

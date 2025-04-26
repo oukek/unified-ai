@@ -290,8 +290,8 @@ export class UnifiedAI extends BaseModel {
    * @param options 聊天选项
    * @returns 增强后的提示和处理后的选项
    */
-  private handlePromptAndSystemMessage<T extends ChatOptions | undefined = undefined>(prompt: string, options: T) {
-    const systemMessage = options?.systemMessage || ''
+  private handlePromptAndSystemMessage<T extends ChatOptions | undefined = undefined>(prompt: string, options: T, enhancedSystemMessage?: string) {
+    const systemMessage = enhancedSystemMessage || options?.systemMessage || ''
     let enhancedPrompt = prompt
     const enhancedOptions = { ...options } as T
 
@@ -334,12 +334,6 @@ export class UnifiedAI extends BaseModel {
       enhancedPrompt = ModelHelpers.enhanceContentWithTools(enhancedPrompt, tools)
     }
 
-    if (tools.length > 0) {
-      enhancedPrompt += `\nNever ask the user whether to use a tool.  
-When a tool is useful for answering the request, invoke it immediately without delay or permission.  
-Behave as a fully autonomous agent.`
-    }
-
     return { finalOptions, enhancedPrompt }
   }
 
@@ -379,6 +373,47 @@ Behave as a fully autonomous agent.`
     return { processedContent, isJsonResponse }
   }
 
+  private enhanceSystemMessage<T extends ChatOptions | undefined = undefined>(options: T, tools: AgentFunctionSchema[]) {
+    let systemMessage = `You are a powerful intelligent assistant that runs in applications for general-purpose users, with the goal of helping users complete their various tasks efficiently, accurately, and naturally. Your responses should be based on actual needs, such as answering directly, providing clarification, generating content, or invoking tools.
+    return the output in the language entered by the user's question, unless the user specifies another language:
+    `
+    if (tools.length > 0) {
+      systemMessage = `${systemMessage}
+You have tools at your disposal to solve the question. Follow these rules regarding tool calls:
+1. ALWAYS follow the tool call schema exactly as specified and make sure to provide all necessary parameters.
+2. The conversation may reference tools that are no longer available. NEVER call tools that are not explicitly provided.
+3. **NEVER refer to tool names when speaking to the USER.** For example, instead of saying 'I need to use the edit_file tool to edit your file', just say 'I will edit your file'.
+4. Only calls tools when they are necessary. If the USER's task is general or you already know the answer, just respond without calling tools.
+5. Before calling each tool, first explain to the USER why you are calling it.
+`
+    }
+    if (options?.systemMessage) {
+      systemMessage = `${systemMessage}
+Here is the user's system message, You should follow it when responding to the user:
+<system_message>
+${options?.systemMessage}
+</system_message>`
+    }
+    return systemMessage
+  }
+
+  private async optimizeUserQuestion(prompt: string, _callback?: AgentCallback) {
+    const response = await this.baseModel.unifiedChat(`You are a powerful intelligent assistant that runs in applications for general-purpose users, with the goal of helping users complete their various tasks efficiently, accurately, and naturally. Your responses should be based on actual needs, such as answering directly, providing clarification, generating content, or invoking tools.
+
+      Here is the user's question, You should optimize it to make it more accurate and natural:
+      <user_question>
+      ${prompt}
+      </user_question>
+      return the output in the language entered by the user's question, unless the user specifies another language:
+      return the optimized question in the following JSON format:
+      {
+        "optimizedQuestion": "The optimized question"
+      }`, {
+      responseFormat: ResponseFormat.JSON,
+    })
+    return response.content.optimizedQuestion
+  }
+
   /**
    * 统一接口：流式返回聊天响应
    * @param prompt 提示/消息内容
@@ -397,18 +432,28 @@ Behave as a fully autonomous agent.`
     // 保存原始用户提示，确保它不会在多轮函数调用中丢失
     const originalUserPrompt = prompt
 
+    options = Object.assign({
+      optimizeUserQuestion: true,
+    }, options)
+
     // 通知开始响应
     if (depth === 0) {
+      // 如果用户要求优化问题，则将问题优化，默认优化
+      if (options?.optimizeUserQuestion) {
+        prompt = await this.optimizeUserQuestion(prompt, callback)
+      }
       callback?.(AgentEventType.RESPONSE_START, { prompt, options })
     }
 
     try {
-      // 处理系统消息和提示
-      const { enhancedPrompt, enhancedOptions, systemMessage, currentModel, supportsSystemMessages }
-        = this.handlePromptAndSystemMessage(prompt, options)
-
       // 获取所有工具
       const tools = await this.getAllTools()
+
+      const enhancedSystemMessage = this.enhanceSystemMessage(options, tools)
+
+      // 处理系统消息和提示
+      const { enhancedPrompt, enhancedOptions, systemMessage, currentModel, supportsSystemMessages }
+        = this.handlePromptAndSystemMessage(prompt, options, enhancedSystemMessage)
 
       // 准备选项和增强提示
       const { finalOptions, enhancedPrompt: finalPrompt }

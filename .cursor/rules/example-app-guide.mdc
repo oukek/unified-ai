@@ -1,0 +1,29 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 示例应用指南
+
+示例应用是一个展示 SDK 功能的 Web 应用，使用 Vue.js 构建。
+
+## 目录结构
+
+- [src/main.ts](mdc:example/src/main.ts): 应用的入口文件
+- [src/App.vue](mdc:example/src/App.vue): 应用的根组件
+- [src/components](mdc:example/src/components): 包含各种组件
+- [src/views](mdc:example/src/views): 包含各种页面视图
+- [src/router](mdc:example/src/router): 包含路由配置
+- [src/stores](mdc:example/src/stores): 包含状态管理
+- [src/api](mdc:example/src/api): 包含 API 调用
+- [src/assets](mdc:example/src/assets): 包含静态资源
+
+## 启动应用
+
+使用以下命令启动示例应用：
+
+```bash
+pnpm example
+```
+
+这将启动一个开发服务器，展示 SDK 的各种功能和用法。

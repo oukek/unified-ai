@@ -176,6 +176,8 @@ export interface FunctionCall {
   arguments: Record<string, any>
   /** 函数执行结果 */
   result?: any
+  /** 函数执行时长（毫秒） */
+  executionTime?: number
 }
 
 /**

@@ -110,6 +110,7 @@ export class AIController {
         }
       };
 
+      console.log('conversation.systemMessage', conversation.systemMessage)
       // 发送流式请求到AI
       await this.aiService.sendMessageStream(
         userId,

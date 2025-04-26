@@ -1,0 +1,31 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# UnifiedAI 项目概述
+
+UnifiedAI 是一个统一的AI接口库，用于简化与多种AI模型的交互。项目使用 pnpm 作为包管理工具，采用 monorepo 结构管理多个子包。
+
+## 项目结构
+
+项目由三个主要部分组成：
+
+1. **SDK**：核心库 `@oukek/unified-ai`，为开发者提供统一的接口访问各种AI模型。位于 [sdk](mdc:sdk) 目录下。
+
+2. **示例应用**：展示SDK功能的Web应用。位于 [example](mdc:example) 目录下。
+
+3. **服务器**：提供后端支持的服务。位于 [server](mdc:server) 目录下。
+
+## 工作空间配置
+
+项目使用 pnpm workspace 管理多个包，配置文件是 [pnpm-workspace.yaml](mdc:pnpm-workspace.yaml)。
+
+## 主要脚本
+
+以下是可用的主要命令：
+
+- `pnpm build`: 构建SDK
+- `pnpm example`: 运行示例应用
+- `pnpm lint`: 检查代码规范
+- `pnpm lint:fix`: 自动修复代码规范问题

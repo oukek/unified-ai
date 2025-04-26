@@ -52,6 +52,9 @@ export class FunctionCallExecutor {
           // 复制函数调用对象，添加执行结果
           const resultCall = { ...call }
 
+          // 记录开始执行时间
+          const startTime = Date.now()
+
           if (func.executor) {
             // 执行函数
             resultCall.result = await func.executor(call.arguments, func.config)
@@ -63,6 +66,13 @@ export class FunctionCallExecutor {
               arguments: call.arguments,
             })
           }
+
+          // 计算执行时长（毫秒）
+          const executionTime = Date.now() - startTime
+
+          // 将执行时长添加到结果中
+          resultCall.executionTime = executionTime
+
           results.push(resultCall)
         }
         catch (error: any) {
@@ -76,6 +86,7 @@ export class FunctionCallExecutor {
           results.push({
             ...call,
             result: { error: error.message },
+            executionTime: 0, // 执行失败时记录时长为0
           })
         }
       }
@@ -90,6 +101,7 @@ export class FunctionCallExecutor {
         results.push({
           ...call,
           result: { error: `Function '${call.name}' not found` },
+          executionTime: 0, // 未找到函数时记录时长为0
         })
       }
     }

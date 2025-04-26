@@ -1,0 +1,47 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 开发工作流
+
+本项目的开发工作流程及相关命令指南。
+
+## 环境设置
+
+1. 安装 Node.js (建议使用 v16 或更高版本)
+2. 安装 pnpm: `npm install -g pnpm`
+3. 克隆仓库: `git clone https://github.com/oukek/unified-ai.git`
+4. 安装依赖: `pnpm install`
+
+## 开发流程
+
+### SDK 开发
+
+1. 进入 SDK 目录: `cd sdk`
+2. 修改代码
+3. 构建: `pnpm build`
+4. 测试: `pnpm test`
+
+### 示例应用开发
+
+1. 启动开发服务器: `pnpm example`
+2. 在浏览器中打开应用 (通常是 http://localhost:3000)
+3. 修改代码，应用会自动热重载
+
+### 服务器开发
+
+1. 启动服务器: `cd server && pnpm dev`
+2. 服务器会在指定端口运行 (通常是 8080)
+
+## 调试
+
+- 使用 VS Code 调试工具
+- Chrome DevTools 可用于前端调试
+- 使用 `console.log` 进行简单调试
+
+## 构建和部署
+
+- 构建 SDK: `pnpm build`
+- 构建示例应用: `cd example && pnpm build`
+- 构建服务器: `cd server && pnpm build`
