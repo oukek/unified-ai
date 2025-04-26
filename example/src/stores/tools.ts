@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import toolApi from '../api/modules/tool'
-import type { Tool as ApiTool } from '../api/types'
-import type { Tool } from '../utils/tools'
+import type { Tool } from '../api/types'
 
 interface ToolConfig {
   enabled: boolean
@@ -31,7 +30,7 @@ export const useToolsStore = defineStore('tools', () => {
       // 检查必要的配置是否已填写
       if (tool.configRequired) {
         for (const key of tool.configRequired) {
-          if (!config.configs[key]) {
+          if (!config.configs[key.name]) {
             return false
           }
         }
@@ -56,7 +55,7 @@ export const useToolsStore = defineStore('tools', () => {
     if (!config) return false
     
     for (const key of tool.configRequired) {
-      if (!config.configs[key]) {
+      if (!config.configs[key.name]) {
         return false
       }
     }
@@ -115,24 +114,6 @@ export const useToolsStore = defineStore('tools', () => {
     }
   }
   
-  // 将API返回的工具转换为本地工具对象
-  function convertApiToolToTool(apiTool: ApiTool): Tool {
-    return {
-      name: apiTool.name,
-      description: apiTool.description,
-      parameters: apiTool.parameters,
-      // 将复杂的configRequired对象转换为简单的字符串数组
-      configRequired: apiTool.configRequired ? apiTool.configRequired.map(item => item.name) : undefined,
-      // 存储原始的configRequired，以便在UI中显示提示信息
-      configDescriptions: apiTool.configRequired,
-      executor: async (_: Record<string, any>) => {
-        // 这里可以实现通过API调用工具的逻辑
-        // 示例实现，根据实际需求修改
-        return { result: `执行工具 ${apiTool.name}` };
-      }
-    };
-  }
-  
   // 初始化工具配置
   async function initialize() {
     // 防止重复初始化
@@ -148,7 +129,7 @@ export const useToolsStore = defineStore('tools', () => {
       const toolsResponse = await toolApi.getAllTools()
       if (toolsResponse.data) {
         // 将API工具转换为本地工具对象
-        tools.value = toolsResponse.data.map(convertApiToolToTool)
+        tools.value = toolsResponse.data
       }
       
       // 2. 获取用户已启用的工具配置
@@ -177,47 +158,6 @@ export const useToolsStore = defineStore('tools', () => {
     }
   }
   
-  // 执行工具
-  async function executeTool(toolName: string, params: Record<string, any>): Promise<any> {
-    // 查找工具
-    const tool = tools.value.find(t => t.name === toolName)
-    if (!tool) {
-      throw new Error(`工具 "${toolName}" 不存在`)
-    }
-    
-    // 检查工具是否已启用
-    if (!enabledTools.value.includes(tool)) {
-      throw new Error(`工具 "${toolName}" 未启用或配置不完整`)
-    }
-    
-    // 执行工具
-    return await tool.executor(params)
-  }
-  
-  // 获取已启用的工具，转换为适合 addFunctions 使用的格式
-  function getEnabledTools() {
-    return enabledTools.value.map(tool => {
-      return {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-        executor: async (params: Record<string, any>) => {
-          // 获取工具配置并合并到参数中
-          const toolConfig = toolConfigs.value[tool.name]
-          const mergedParams = {
-            ...params,
-            ...toolConfig?.configs
-          }
-          
-          // 执行工具
-          return await executeTool(tool.name, mergedParams)
-        }
-      }
-    })
-  }
-  
-  // 不再自动初始化
-  // initialize()
   
   return {
     allTools,
@@ -228,8 +168,6 @@ export const useToolsStore = defineStore('tools', () => {
     isToolAvailable,
     toggleToolEnabled,
     setToolConfigItem,
-    executeTool,
-    getEnabledTools,
     initialize
   }
 }) 

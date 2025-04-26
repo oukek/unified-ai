@@ -54,7 +54,7 @@ export class FunctionCallExecutor {
 
           if (func.executor) {
             // 执行函数
-            resultCall.result = await func.executor(call.arguments)
+            resultCall.result = await func.executor(call.arguments, func.config)
           }
           else {
             // 执行函数

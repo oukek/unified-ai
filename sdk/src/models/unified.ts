@@ -104,6 +104,7 @@ export class UnifiedAI extends BaseModel {
         name: tool.name,
         description: tool.description || '',
         parameters,
+        config: tool.config,
         executor: tool.executor,
       }
     })
@@ -331,6 +332,12 @@ export class UnifiedAI extends BaseModel {
     // 如果模型不支持工具，使用提示增强
     if (!this.baseModel.supportsTools(currentModel) && tools.length > 0) {
       enhancedPrompt = ModelHelpers.enhanceContentWithTools(enhancedPrompt, tools)
+    }
+
+    if (tools.length > 0) {
+      enhancedPrompt += `\nNever ask the user whether to use a tool.  
+When a tool is useful for answering the request, invoke it immediately without delay or permission.  
+Behave as a fully autonomous agent.`
     }
 
     return { finalOptions, enhancedPrompt }

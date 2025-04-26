@@ -10,7 +10,7 @@ export interface Tool {
   name: string
   description: string
   parameters: Record<string, any>
-  executor: (params: Record<string, any>) => Promise<any>
+  executor: (params: Record<string, any>, config?: Record<string, any>) => Promise<any>
   configRequired?: {
     name: string
     description: string
@@ -34,14 +34,14 @@ export const searchByGoogle: Tool = {
     name: 'GOOGLE_SEARCH_ENGINE_ID',
     description: 'Google 搜索引擎 ID',
   }],
-  executor: async (params: Record<string, any>) => {
+  executor: async (params: Record<string, any>, config: Record<string, any>) => {
     try {
       const keyword = params.keyword as string
       console.log(`正在搜索: ${keyword}`)
 
       // 从配置中获取 API 密钥和搜索引擎 ID
-      const API_KEY = params._config?.GOOGLE_API_KEY
-      const SEARCH_ENGINE_ID = params._config?.GOOGLE_SEARCH_ENGINE_ID
+      const API_KEY = config?.GOOGLE_API_KEY
+      const SEARCH_ENGINE_ID = config?.GOOGLE_SEARCH_ENGINE_ID
 
       if (!API_KEY || !SEARCH_ENGINE_ID) {
         throw new Error('缺少必要的配置：GOOGLE_API_KEY 或 GOOGLE_SEARCH_ENGINE_ID')

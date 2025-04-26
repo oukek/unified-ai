@@ -6,6 +6,7 @@ import { config as dotenvConfig } from 'dotenv';
 import { initializeDb } from './db';
 import { config } from './config';
 import { setupRoutes } from './routes';
+import { setupSocketHandlers } from './socket';
 
 // 加载环境变量
 dotenvConfig();
@@ -25,11 +26,16 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
   }
 });
+console.log('Socket.io 服务器已初始化');
 
+// 设置路由
 setupRoutes(app);
+
+// 设置 Socket 处理器
+setupSocketHandlers(io);
+console.log('Socket 处理器已设置完成');
 
 // 数据库连接
 initializeDb()
@@ -37,15 +43,6 @@ initializeDb()
     // 启动服务器
     httpServer.listen(PORT, () => {
       console.log(`服务器运行在端口 ${PORT}`);
-    });
-    
-    // Socket.io 连接处理
-    io.on('connection', (socket) => {
-      console.log('客户端已连接:', socket.id);
-      
-      socket.on('disconnect', () => {
-        console.log('客户端已断开连接:', socket.id);
-      });
     });
   })
   .catch((error) => {

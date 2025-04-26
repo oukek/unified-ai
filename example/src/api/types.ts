@@ -62,6 +62,10 @@ export interface Tool {
     name: string;
     description: string;
   }[];
+  configDescriptions?: {
+    name: string;
+    description: string;
+  }[];
 }
 
 export interface UserTools {

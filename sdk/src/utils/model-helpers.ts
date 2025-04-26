@@ -47,33 +47,49 @@ export class ModelHelpers {
     // 添加函数说明和规范的调用格式
     return `${content}
 
-你可以调用以下工具，请务必严格使用下列工具名称和参数，工具名称必须保持一致，不得修改或新增：
-工具列表：
-${JSON.stringify(functionDefinitions, null, 2)}
-
-调用工具时，请严格按照以下标准 JSON 格式输出：
-- 只使用提供的工具名称，不得自行创建或更改工具名称；
-- 严格按照以上 JSON 格式输出，不要添加其他多余的文本或格式。
-
-当需要调用一个或多个工具时，请严格使用如下格式，包括前后的标签：
-<==start_tool_calls==>
-{
-  "function_calls": [
+    You are an intelligent assistant capable of invoking tools to complete tasks efficiently.
+    You have access to the following tools.  
+    **When you determine that a task requires a tool, invoke the tool directly without asking the user for permission.**
+    
+    Below is the full list of available tools.  
+    **Only use the tool names and parameters exactly as defined below. Do not modify or create new tools.**
+    
+    ${JSON.stringify(functionDefinitions, null, 2)}
+    
+    ---
+    
+    ### 📌 Tool Invocation Format
+    
+    When invoking tools, strictly follow the format below.  
+    **Do not include any additional text, markdown, or explanations. Output only the JSON inside the tags.**
+    
+    1. Use only the tool names provided above — they must match exactly.
+    2. Provide arguments in JSON format, with correct field names and types.
+    3. If you don't need to call any tool, proceed with a normal response — do not output any JSON block.
+    
+    ### ✅ Format:
+    
+    <==start_tool_calls==>
     {
-      "name": "工具名称1",
-      "arguments": {
-        "参数名": "参数值"
-      }
-    },
-    {
-      "name": "工具名称2",
-      "arguments": {
-        "参数名": "参数值"
-      }
+      "function_calls": [
+        {
+          "name": "ToolName1",
+          "arguments": {
+            "param1": "value1",
+            "param2": "value2"
+          }
+        },
+        {
+          "name": "ToolName2",
+          "arguments": {
+            "paramA": "valueA"
+          }
+        }
+      ]
     }
-  ]
-}
-<==end_tool_calls==>`
+    <==end_tool_calls==>
+    
+    **Strictly follow the format above. Do not add any extra characters, explanations, or formatting.**`
   }
 
   /**

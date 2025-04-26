@@ -40,6 +40,9 @@ importers:
       pinia:
         specifier: 2.0.36
         version: 2.0.36(typescript@5.7.3)(vue@3.5.13(typescript@5.7.3))
+      socket.io-client:
+        specifier: ^4.8.1
+        version: 4.8.1
       vue:
         specifier: ^3.5.13
         version: 3.5.13(typescript@5.7.3)
@@ -135,6 +138,9 @@ importers:
 
   server:
     dependencies:
+      '@oukek/unified-ai':
+        specifier: workspace:*
+        version: link:../sdk
       axios:
         specifier: ^1.8.4
         version: 1.8.4
@@ -1951,6 +1957,9 @@ packages:
 
   end-of-stream@1.4.4:
     resolution: {integrity: sha512-+uw1inIHVPQoaVuHzRyXd21icM+cnt4CzD5rW+NC1wjOUSTOs+Te7FOv7AhN7vS9x/oIyhLP5PR1H+phQAHu5Q==, tarball: https://registry.npmjs.org/end-of-stream/-/end-of-stream-1.4.4.tgz}
+
+  engine.io-client@6.6.3:
+    resolution: {integrity: sha512-T0iLjnyNWahNyv/lcjS2y4oE358tVS/SYQNxYXGAJ9/GLgH4VCvOQ/mhTjqU88mLZCQgiG8RIegFHYCdVC+j5w==, tarball: https://registry.npmjs.org/engine.io-client/-/engine.io-client-6.6.3.tgz}
 
   engine.io-parser@5.2.3:
     resolution: {integrity: sha512-HqD3yTBfnBxIrbnM1DoD6Pcq8NECnh8d4As1Qgh0z5Gg3jRRIqijury0CL3ghu/edArpUYiYqQiDUQBIs4np3Q==, tarball: https://registry.npmjs.org/engine.io-parser/-/engine.io-parser-5.2.3.tgz}
@@ -3901,6 +3910,10 @@ packages:
   socket.io-adapter@2.5.5:
     resolution: {integrity: sha512-eLDQas5dzPgOWCk9GuuJC2lBqItuhKI4uxGgo9aIV7MYbk2h9Q6uULEh8WBzThoI7l+qU9Ast9fVUmkqPP9wYg==, tarball: https://registry.npmjs.org/socket.io-adapter/-/socket.io-adapter-2.5.5.tgz}
 
+  socket.io-client@4.8.1:
+    resolution: {integrity: sha512-hJVXfu3E28NmzGk8o1sHhN3om52tRvwYeidbj7xKy2eIIse5IoKX3USlS6Tqt3BHAtflLIkCQBkzVrEEfWUyYQ==, tarball: https://registry.npmjs.org/socket.io-client/-/socket.io-client-4.8.1.tgz}
+    engines: {node: '>=10.0.0'}
+
   socket.io-parser@4.2.4:
     resolution: {integrity: sha512-/GbIKmo8ioc+NIWIhwdecY0ge+qVBSMdgxGygevmdHj24bsfgtCmcUUcQ5ZzcylGFHsN3k4HB4Cgkl96KVnuew==, tarball: https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.4.tgz}
     engines: {node: '>=10.0.0'}
@@ -4471,6 +4484,10 @@ packages:
   xml-name-validator@4.0.0:
     resolution: {integrity: sha512-ICP2e+jsHvAj2E2lIHxa5tjXRlKDJo4IdvPvCXbXQGdzSfmSpNVyIKMvoZHjDY9DP0zV17iI85o90vRFXNccRw==, tarball: https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-4.0.0.tgz}
     engines: {node: '>=12'}
+
+  xmlhttprequest-ssl@2.1.2:
+    resolution: {integrity: sha512-TEU+nJVUUnA4CYJFLvK5X9AOeH4KvDvhIfm0vV1GaQRtchnG0hgK5p8hw/xjv8cunWYCsiPCSDzObPyhEwq3KQ==, tarball: https://registry.npmjs.org/xmlhttprequest-ssl/-/xmlhttprequest-ssl-2.1.2.tgz}
+    engines: {node: '>=0.4.0'}
 
   xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==, tarball: https://registry.npmjs.org/xtend/-/xtend-4.0.2.tgz}
@@ -6378,6 +6395,18 @@ snapshots:
   end-of-stream@1.4.4:
     dependencies:
       once: 1.4.0
+
+  engine.io-client@6.6.3:
+    dependencies:
+      '@socket.io/component-emitter': 3.1.2
+      debug: 4.3.7
+      engine.io-parser: 5.2.3
+      ws: 8.17.1
+      xmlhttprequest-ssl: 2.1.2
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
 
   engine.io-parser@5.2.3: {}
 
@@ -8924,6 +8953,17 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  socket.io-client@4.8.1:
+    dependencies:
+      '@socket.io/component-emitter': 3.1.2
+      debug: 4.3.7
+      engine.io-client: 6.6.3
+      socket.io-parser: 4.2.4
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   socket.io-parser@4.2.4:
     dependencies:
       '@socket.io/component-emitter': 3.1.2
@@ -9476,6 +9516,8 @@ snapshots:
   ws@8.18.1: {}
 
   xml-name-validator@4.0.0: {}
+
+  xmlhttprequest-ssl@2.1.2: {}
 
   xtend@4.0.2: {}
 

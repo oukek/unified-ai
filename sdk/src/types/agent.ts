@@ -11,15 +11,18 @@ export interface AgentFunction {
   description?: string
   /** 函数参数模式 */
   parameters: z.ZodObject<any> | Record<string, any>
+  /** 函数配置 */
+  config?: Record<string, any>
   /** 函数执行器 */
-  executor?: (params: Record<string, any>) => Promise<any>
+  executor?: (params: Record<string, any>, config?: Record<string, any>) => Promise<any>
 }
 
 export interface AgentFunctionSchema {
   name: string
   description?: string
   parameters: Record<string, any>
-  executor?: (params: Record<string, any>) => Promise<any>
+  config?: Record<string, any>
+  executor?: (params: Record<string, any>, config?: Record<string, any>) => Promise<any>
 }
 
 /**

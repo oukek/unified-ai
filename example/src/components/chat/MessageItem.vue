@@ -16,7 +16,7 @@
       <div v-if="message.role === 'user'" class="content-body" v-html="renderedContent"></div>
       <div v-else class="content-body">
         <!-- 当消息为空时显示加载动画 -->
-        <div v-if="!message.content && !message.blocks?.length" class="loading-animation">
+        <div v-if="!message.content && (!message.blocks || message.blocks.length === 0)" class="loading-animation">
           <div class="loading-dots">
             <span></span>
             <span></span>
@@ -151,6 +151,11 @@ import { ref, computed, onMounted, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css' // 导入默认的 GitHub 风格样式
+import dayjs from 'dayjs' // 导入 dayjs
+import 'dayjs/locale/zh-cn' // 导入中文语言包
+
+// 设置 dayjs 语言为中文
+dayjs.locale('zh-cn')
 
 // 扩展 ChatMessage 类型以包含函数调用
 interface FunctionCall {
@@ -172,6 +177,7 @@ interface ContentBlock {
 interface EnhancedChatMessage extends ChatMessage {
   functionCalls?: FunctionCall[]
   blocks?: ContentBlock[] // 消息内容块
+  isLoading?: boolean // 是否正在加载中
 }
 
 const props = defineProps<{
@@ -232,7 +238,12 @@ const previousBlocksLength = ref(props.message.blocks?.length || 0)
 
 // 渲染 Markdown 内容
 const renderedContent = computed(() => {
-  return md.render(props.message.content || '')
+  if (props.message.role === 'user') {
+    return md.render(props.message.content || '')
+  } else {
+    // 对于AI助手，根据加载状态决定显示方式
+    return typing.value ? renderMarkdown(displayedContent.value) : md.render(props.message.content || '')
+  }
 })
 
 // 单独渲染文本块的Markdown
@@ -264,23 +275,24 @@ function typeWriter() {
   
   // 如果有块，使用块级打字机效果
   if (props.message.blocks && props.message.blocks.length > 0) {
-    // 检查blocks是否发生变化
-    const hasNewBlocks = props.message.blocks.length !== previousBlocksLength.value
     previousBlocksLength.value = props.message.blocks.length
     
-    typeBlockWriter(hasNewBlocks)
+    typeBlockWriter()
     return
   }
   
   // 默认的打字机效果
-  if (typingIndex.value < props.message.content.length) {
+  if (typingIndex.value < (props.message.content || '').length) {
     // 只处理新内容，避免从头开始
     if (hasNewContent) {
-      displayedContent.value = props.message.content.substring(0, typingIndex.value + 1)
+      // 直接更新到当前位置，并从当前位置继续打字效果
+      const currentPosition = Math.max(displayedContent.value.length, typingIndex.value)
+      displayedContent.value = props.message.content.substring(0, currentPosition + 1)
+      typingIndex.value = currentPosition + 1
     } else {
       displayedContent.value += props.message.content.charAt(typingIndex.value)
+      typingIndex.value++
     }
-    typingIndex.value++
     
     // 触发滚动到底部
     triggerScrollToBottom()
@@ -292,7 +304,7 @@ function typeWriter() {
       // 等待更多内容
       setTimeout(() => {
         // 再次检查是否有新内容
-        if (props.message.content.length > typingIndex.value) {
+        if ((props.message.content || '').length > typingIndex.value) {
           typeWriter() // 如果有新内容，继续打字
         } else {
           setTimeout(typeWriter, 100) // 否则等待100ms后再检查
@@ -310,7 +322,7 @@ function typeWriter() {
 }
 
 // 块级打字机效果
-function typeBlockWriter(hasNewBlocks = false) {
+function typeBlockWriter() {
   const blocks = props.message.blocks || []
   
   // 确保有足够的数组元素
@@ -329,8 +341,19 @@ function typeBlockWriter(hasNewBlocks = false) {
     
     // 只对文本块应用打字机效果
     if (block.type === 'text' && block.content) {
+      const currentTypingBlock = typingBlocks.value[currentTypingBlockIndex.value] || ''
+      
+      // 如果有新内容，直接更新到当前位置
+      if (currentTypingBlock.length > 0 && currentTypingBlock.length < block.content.length) {
+        // 获取新增的内容，立即显示
+        const currentPosition = Math.max(currentTypingBlock.length, currentBlockTypingIndex.value)
+        typingBlocks.value[currentTypingBlockIndex.value] = block.content.substring(0, currentPosition + 1)
+        currentBlockTypingIndex.value = currentPosition + 1
+        break
+      }
+      
       // 检查当前块是否已经完成
-      if (typingBlocks.value[currentTypingBlockIndex.value]?.length >= block.content.length) {
+      if (currentTypingBlock.length >= block.content.length) {
         // 当前块已完成，移到下一个
         currentTypingBlockIndex.value++
         currentBlockTypingIndex.value = 0
@@ -355,9 +378,9 @@ function typeBlockWriter(hasNewBlocks = false) {
           // 重置索引到新块
           currentTypingBlockIndex.value = blocks.length
           currentBlockTypingIndex.value = 0
-          typeBlockWriter(true) // 如果有新块，继续打字
+          typeBlockWriter() // 如果有新块，继续打字
         } else {
-          setTimeout(() => typeBlockWriter(false), 100) // 否则等待100ms后再检查
+          setTimeout(() => typeBlockWriter(), 100) // 否则等待100ms后再检查
         }
       }, 100)
     } else {
@@ -390,95 +413,92 @@ function typeBlockWriter(hasNewBlocks = false) {
       // 触发滚动到底部
       triggerScrollToBottom()
       
-      setTimeout(() => typeBlockWriter(false), typingSpeed)
+      setTimeout(() => typeBlockWriter(), typingSpeed)
     } else {
       // 当前块完成，移动到下一个
       currentTypingBlockIndex.value++
       currentBlockTypingIndex.value = 0
-      setTimeout(() => typeBlockWriter(false), typingSpeed)
+      setTimeout(() => typeBlockWriter(), typingSpeed)
     }
   } else {
     // 不是文本块，移到下一个
     currentTypingBlockIndex.value++
     currentBlockTypingIndex.value = 0
-    setTimeout(() => typeBlockWriter(false), typingSpeed)
+    setTimeout(() => typeBlockWriter(), typingSpeed)
   }
 }
 
-// 监听消息变化，重置打字机效果
-watch(() => props.message, (newVal, oldVal) => {
-  if (newVal.role === 'assistant' && newVal.isLoading === true && enableTyping.value) {
-    // 检查是否是新消息或初始化（而不是流更新现有消息）
-    const isInitialOrNewMessage = !oldVal || oldVal.id !== newVal.id
-    
-    if (isInitialOrNewMessage) {
-      // 完全重置打字机状态
-      typing.value = true
-      isTyping.value = true
-      displayedContent.value = ''
-      typingIndex.value = 0
-      typingBlocks.value = []
-      currentTypingBlockIndex.value = 0
-      currentBlockTypingIndex.value = 0
-      
-      // 设置初始内容
-      previousContent.value = newVal.content || ''
-      previousBlocksLength.value = newVal.blocks?.length || 0
-      
-      // 启动打字机效果
-      setTimeout(typeWriter, typingSpeed)
-    } else if (!typing.value) {
-      // 如果打字机效果已经停止但消息仍在加载，重新启动打字
-      typing.value = true
-      isTyping.value = true
-      
-      // 设置初始内容
-      previousContent.value = newVal.content || ''
-      previousBlocksLength.value = newVal.blocks?.length || 0
-      
-      // 启动打字机效果
-      setTimeout(typeWriter, typingSpeed)
-    } else {
-      // 这是流更新，不需要重置打字机效果
-      // typeWriter会自动处理新内容
-      previousContent.value = newVal.content || ''
-      previousBlocksLength.value = newVal.blocks?.length || 0
-    }
-  } else {
-    // 对于历史消息（非加载中），直接显示完整内容
-    typing.value = false
-    isTyping.value = false
-  }
-}, { immediate: true, deep: true })
-
-// 额外监听消息内容的变化，处理单独的内容更新（特别是blocks）
+// 监听消息内容的变化，处理单独的内容更新（特别是blocks）
 watch([
   () => props.message.content,
   () => props.message.blocks,
-], ([newContent, newBlocks], [oldContent, oldBlocks]) => {
-  if (props.message.role === 'assistant' && props.message.isLoading === true && enableTyping.value) {
-    // 重新检查打字机状态
-    if (!typing.value) {
-      // 如果打字机停止了，重新启动
-      typing.value = true
-      isTyping.value = true
+  () => props.message.isLoading
+], ([newContent, newBlocks, isLoading], [oldContent, oldBlocks, wasLoading]) => {
+  if (props.message.role === 'assistant') {
+    if (isLoading) {
+      // 消息正在加载中，确保打字机状态激活
+      typing.value = true;
+      isTyping.value = true;
       
-      if (newBlocks && newBlocks.length > 0) {
-        // 有块，继续从当前位置播放打字效果
-        setTimeout(() => typeBlockWriter(false), typingSpeed)
-      } else {
-        // 无块，使用普通打字效果
-        setTimeout(typeWriter, typingSpeed)
+      // 内容有变化，立即更新显示
+      if (newContent !== oldContent) {
+        // 有新内容，继续从当前位置播放打字效果
+        // 使用更短的延迟确保UI立即更新
+        setTimeout(typeWriter, 0);
       }
-    }
-    
-    // 检查是否有新的段落块添加
-    if (newBlocks && oldBlocks && newBlocks.length > oldBlocks.length) {
-      // 如果有新块，更新缓存的长度
-      previousBlocksLength.value = newBlocks.length
+      
+      // 检查是否有新的段落块添加
+      if (newBlocks && oldBlocks && Array.isArray(newBlocks) && Array.isArray(oldBlocks)) {
+        // 检查内容更新，无论是新块还是现有块内容更新
+        let hasBlockUpdates = newBlocks.length > oldBlocks.length;
+        
+        if (!hasBlockUpdates && newBlocks.length === oldBlocks.length) {
+          // 检查是否有任何块的内容更新
+          for (let i = 0; i < newBlocks.length; i++) {
+            const newBlock = newBlocks[i];
+            const oldBlock = oldBlocks[i];
+            
+            if (newBlock.type === 'text' && oldBlock.type === 'text' && 
+                newBlock.content !== oldBlock.content) {
+              hasBlockUpdates = true;
+              break;
+            }
+          }
+        }
+        
+        if (hasBlockUpdates) {
+          // 有新块或内容更新，立即更新打字效果
+          previousBlocksLength.value = newBlocks.length;
+          
+          // 立即更新UI，不使用延迟
+          typeBlockWriter();
+        }
+      }
+    } else if (wasLoading && !isLoading) {
+      // 从加载状态切换到完成状态
+      typing.value = false;
+      isTyping.value = false;
+      // 确保显示完整内容
+      displayedContent.value = props.message.content || '';
+      
+      // 确保所有块内容最终完整显示
+      if (props.message.blocks && props.message.blocks.length > 0) {
+        props.message.blocks.forEach((block, index) => {
+          if (block.type === 'text' && block.content) {
+            if (index < typingBlocks.value.length) {
+              typingBlocks.value[index] = block.content;
+            } else if (typingBlocks.value.length <= index) {
+              typingBlocks.value.push(block.content);
+            }
+          }
+        });
+      }
+      
+      // 确保触发一次滚动
+      triggerScrollToBottom();
     }
   }
-}, { deep: true })
+}, { deep: true, immediate: true }) // 添加immediate以确保首次渲染时也执行
 
 // 组件挂载时启动打字机效果
 onMounted(() => {
@@ -506,11 +526,22 @@ onMounted(() => {
 })
 
 // 格式化时间
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString('zh-CN', { 
-    hour: '2-digit', 
-    minute: '2-digit'
-  })
+function formatTime(date: Date | string): string {
+  const dateObj = dayjs(date)
+  const now = dayjs()
+  
+  // 如果是今天，显示时间 HH:mm
+  if (dateObj.isSame(now, 'day')) {
+    return dateObj.format('HH:mm')
+  }
+  
+  // 如果是昨天，显示"昨天"
+  if (dateObj.isSame(now.subtract(1, 'day'), 'day')) {
+    return '昨天'
+  }
+  
+  // 否则显示日期 MM/DD
+  return dateObj.format('MM/DD')
 }
 </script>
 
@@ -804,6 +835,7 @@ function formatTime(date: Date): string {
               border-radius: 4px;
               overflow: auto;
               font-size: 13px;
+              white-space: break-spaces;
             }
           }
           

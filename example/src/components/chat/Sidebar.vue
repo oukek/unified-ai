@@ -114,6 +114,11 @@ import SettingsModal from './SettingsModal.vue'
 import SvgIcon from '@/components/common/SvgIcon.vue'
 import ToolsModal from './ToolsModal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
+
+// 设置 dayjs 语言为中文
+dayjs.locale('zh-cn')
 
 const showSettingsModal = ref(false)
 const showToolsModal = ref(false)
@@ -174,29 +179,22 @@ function logout() {
 }
 
 // 格式化日期
-function formatDate(date: Date): string {
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
+function formatDate(date: string | Date): string {
+  const dateObj = dayjs(date)
+  const now = dayjs()
   
-  // 如果是今天，显示时间
-  if (diff < 24 * 60 * 60 * 1000 && 
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  // 如果是今天，显示时间 HH:mm
+  if (dateObj.isSame(now, 'day')) {
+    return dateObj.format('HH:mm')
   }
   
   // 如果是昨天，显示"昨天"
-  const yesterday = new Date(now)
-  yesterday.setDate(now.getDate() - 1)
-  if (date.getDate() === yesterday.getDate() &&
-      date.getMonth() === yesterday.getMonth() &&
-      date.getFullYear() === yesterday.getFullYear()) {
+  if (dateObj.isSame(now.subtract(1, 'day'), 'day')) {
     return '昨天'
   }
   
-  // 否则显示日期
-  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+  // 否则显示日期 MM/DD
+  return dateObj.format('MM/DD')
 }
 </script>
 

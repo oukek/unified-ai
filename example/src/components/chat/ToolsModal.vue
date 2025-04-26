@@ -40,21 +40,21 @@
             <div class="tool-config" v-if="expandedTools.includes(tool.name) && tool.configRequired">
               <div 
                 v-for="configKey in tool.configRequired" 
-                :key="configKey"
+                :key="configKey.name"
                 class="config-item"
               >
                 <div class="config-label">
-                  <label :for="'config-' + tool.name + '-' + configKey">{{ configKey }}</label>
-                  <div class="tooltip-wrapper" v-if="getConfigDescription(tool, configKey)">
+                  <label :for="'config-' + tool.name + '-' + configKey">{{ configKey.name }}</label>
+                  <div class="tooltip-wrapper" v-if="configKey.description">
                     <span class="tooltip-icon">?</span>
-                    <div class="tooltip-text">{{ getConfigDescription(tool, configKey) }}</div>
+                    <div class="tooltip-text">{{ configKey.description }}</div>
                   </div>
                 </div>
                 <input 
                   :id="'config-' + tool.name + '-' + configKey" 
                   type="text" 
-                  :value="getToolConfig(tool.name)?.configs[configKey] || ''"
-                  @input="updateToolConfig(tool.name, configKey, $event)"
+                  :value="getToolConfig(tool.name)?.configs[configKey.name] || ''"
+                  @input="updateToolConfig(tool.name, configKey.name, $event)"
                   placeholder="请输入配置值"
                 />
               </div>
@@ -80,7 +80,6 @@
 import { ref, onMounted } from 'vue'
 import { useToolsStore } from '@/stores/tools'
 import SvgIcon from '@/components/common/SvgIcon.vue'
-import type { Tool } from '@/utils/tools'
 import { showError, showSuccess } from '@/utils/toast'
 
 defineProps<{
@@ -103,15 +102,6 @@ function getToolConfig(toolName: string) {
 // 检查工具是否可用（配置完整）
 function isToolAvailable(toolName: string): boolean {
   return toolsStore.isToolAvailable(toolName)
-}
-
-// 获取配置项的描述
-function getConfigDescription(tool: Tool, configKey: string): string | undefined {
-  if (tool.configDescriptions) {
-    const configInfo = tool.configDescriptions.find(item => item.name === configKey)
-    return configInfo?.description
-  }
-  return undefined
 }
 
 // 切换工具展开状态

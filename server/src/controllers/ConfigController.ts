@@ -18,11 +18,20 @@ export class ConfigController {
 
       const configs = await this.configRepository.findByUserId(req.user.id);
       
-      // 转换value字段为JSON对象
-      const configsWithParsedValue = configs.map(config => ({
-        ...config,
-        value: JSON.parse(config.value)
-      }));
+      // 转换value字段为JSON对象，如果解析失败则保留原始字符串
+      const configsWithParsedValue = configs.map(config => {
+        try {
+          return {
+            ...config,
+            value: JSON.parse(config.value)
+          };
+        } catch (e) {
+          return {
+            ...config,
+            value: config.value
+          };
+        }
+      });
       
       res.json(configsWithParsedValue);
     } catch (error) {
@@ -52,10 +61,16 @@ export class ConfigController {
         return;
       }
       
-      // 将value字段从字符串转换为JSON对象
+      // 将value字段从字符串转换为JSON对象，如果解析失败则保留原始字符串
       const configWithParsedValue = {
         ...config,
-        value: JSON.parse(config.value)
+        value: (() => {
+          try {
+            return JSON.parse(config.value);
+          } catch (e) {
+            return config.value;
+          }
+        })()
       };
       
       res.json(configWithParsedValue);
@@ -88,6 +103,8 @@ export class ConfigController {
 
       // 将value对象转换为JSON字符串存储
       const valueString = typeof value === 'string' ? value : JSON.stringify(value);
+
+      console.log('upsertUserConfig', type, valueString, description);
       
       const config = await this.configRepository.upsertByUserIdAndType(
         req.user.id,
@@ -96,10 +113,16 @@ export class ConfigController {
         description
       );
       
-      // 将value字段从字符串转换为JSON对象
+      // 将value字段从字符串转换为JSON对象，如果解析失败则保留原始字符串
       const configWithParsedValue = {
         ...config,
-        value: JSON.parse(config.value)
+        value: (() => {
+          try {
+            return JSON.parse(config.value);
+          } catch (e) {
+            return config.value;
+          }
+        })()
       };
       
       res.json({
