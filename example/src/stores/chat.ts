@@ -125,24 +125,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 添加临时消息（加载中）
-  function addLoadingMessage(): ExtendedChatMessage | null {
-    if (!activeConversationId.value) return null
-    
-    const message: ExtendedChatMessage = {
-      id: Date.now().toString(),
-      conversationId: activeConversationId.value,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isLoading: true,
-      blocks: [] // 初始化blocks为空数组，为打字机效果做准备
-    }
-    
-    activeMessages.value.push(message)
-    return message
-  }
-
   // 更新会话标题
   async function updateConversationTitle(id: string, title: string) {
     try {
@@ -173,88 +155,75 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 使用WebSocket发送消息给AI
+  /**
+   * 发送消息到AI并处理响应
+   * @param content 消息内容
+   */
   async function sendMessageToAI(content: string) {
     if (!activeConversationId.value) return null
     
-    // 检查是否已经初始化
-    if (!isInitialized.value) {
-      await initialize()
-    }
-    
-    // 设置发送状态
+    // 防止重复发送
+    if (isSending.value) return null
     isSending.value = true
     
-    // 先添加用户消息到消息列表
-    const userMessage: ExtendedChatMessage = {
-      id: `user_${Date.now()}`,
+    // 创建一个模拟的用户消息
+    let userMessage: ExtendedChatMessage = {
+      id: `temp-user-${Date.now()}`,
       conversationId: activeConversationId.value,
-      content: content,
+      content,
       role: 'user',
-      timestamp: new Date()
+      timestamp: new Date(),
+      isLoading: false
     }
-    activeMessages.value.push(userMessage)
     
-    // 添加一个临时的加载消息
-    const loadingMessage = addLoadingMessage()
-    if (!loadingMessage) {
-      isSending.value = false
-      return null
+    // 创建一个模拟的AI消息（加载中状态）
+    let loadingMessage: ExtendedChatMessage = {
+      id: `temp-assistant-${Date.now()}`,
+      conversationId: activeConversationId.value,
+      content: '',
+      role: 'assistant',
+      isLoading: true,
+      blocks: [],
+      timestamp: new Date()
     }
     
     try {
-      // 使用WebSocket进行流式聊天
+      // 添加消息到显示列表（临时ID版本）
+      activeMessages.value.push(userMessage)
+      activeMessages.value.push(loadingMessage)
+      
+      // 使用WebSocket进行流式聊天，不再传递mcpName参数
       await startAIStreamChat(activeConversationId.value, content, {
         onStart: () => {
-          console.log('开始流式聊天')
+          // 已经预先添加了加载状态的消息
+          console.log('AI响应开始')
         },
-        onContent: (newContent) => {
-          loadingMessage.isLoading = false
-          console.log('onContent', newContent)
+        
+        onContent: (chunk) => {
+          // 追加内容到加载中消息
+          loadingMessage.content += chunk
           
-          // 如果收到的内容为空，则直接返回（主要是为了处理socket-ai.ts中的额外回调）
-          if (!newContent) return;
+          // 创建或更新文本块
+          const lastBlock = loadingMessage.blocks?.length ? loadingMessage.blocks[loadingMessage.blocks.length - 1] : null
           
-          // 实时更新UI
-          if (loadingMessage.content === undefined) {
-            loadingMessage.content = newContent
-          } else {
-            loadingMessage.content += newContent
-          }
-          
-          // 添加文本块，确保UI能够实时更新
-          if (!loadingMessage.blocks) {
-            loadingMessage.blocks = []
-          }
-          
-          // 检查最后一个块是否为文本块
-          const lastBlock = loadingMessage.blocks[loadingMessage.blocks.length - 1]
           if (lastBlock && lastBlock.type === 'text') {
-            // 更新现有文本块 - 创建新对象以确保响应式更新
-            const updatedBlock = {
-              ...lastBlock,
-              content: (lastBlock.content || '') + newContent
+            lastBlock.content += chunk
+          } else {
+            if (!loadingMessage.blocks) {
+              loadingMessage.blocks = []
             }
             
-            // 使用Vue的响应式API更新数组中的对象，确保触发视图更新
-            loadingMessage.blocks.splice(loadingMessage.blocks.length - 1, 1, updatedBlock)
-          } else {
-            // 添加新文本块
             loadingMessage.blocks.push({
               type: 'text',
-              content: newContent
+              content: chunk
             })
           }
-          
-          // 使用Vue的响应式更新，确保UI能够感知到变化
-          // 创建一个临时对象，触发响应式更新
-          const updatedBlocks = [...loadingMessage.blocks]
-          loadingMessage.blocks = updatedBlocks
         },
+        
         onFunctionCallStart: (call) => {
-          loadingMessage.isLoading = false
-          console.log('onFunctionCallStart', call)
-          // 添加工具调用块
+          console.log('函数调用开始:', call.name)
+          
+          // 添加函数调用块
           if (!loadingMessage.blocks) {
             loadingMessage.blocks = []
           }
@@ -264,44 +233,63 @@ export const useChatStore = defineStore('chat', () => {
             data: call
           })
           
-          // 更新函数调用数组
+          // 收集函数调用
           if (!loadingMessage.functionCalls) {
             loadingMessage.functionCalls = []
           }
+          
           loadingMessage.functionCalls.push(call)
         },
+        
         onFunctionCallEnd: (call) => {
-          console.log('onFunctionCallEnd', call)
-          // 更新工具调用结果
+          console.log('函数调用结束:', call.name, call.result)
+          
+          // 更新现有的函数调用块
           if (loadingMessage.blocks) {
             const blockIndex = loadingMessage.blocks.findIndex(
               block => block.type === 'tool' && block.data?.id === call.id
             )
+            
             if (blockIndex !== -1) {
               loadingMessage.blocks[blockIndex].data = call
             }
           }
           
-          // 更新函数调用数组
+          // 更新函数调用列表
           if (loadingMessage.functionCalls) {
-            const callIndex = loadingMessage.functionCalls.findIndex(c => c.id === call.id)
+            const callIndex = loadingMessage.functionCalls.findIndex(
+              item => item.id === call.id
+            )
+            
             if (callIndex !== -1) {
               loadingMessage.functionCalls[callIndex] = call
             }
           }
         },
+        
         onComplete: (result) => {
-          console.log('流式聊天完成', result)
+          console.log('AI响应完成', result)
           
-          // 加载完成，更新消息
-          loadingMessage.isLoading = false
+          // 使用服务器返回的真实ID替换临时ID
+          const userIndex = activeMessages.value.findIndex(m => m.id === userMessage.id)
+          const assistantIndex = activeMessages.value.findIndex(m => m.id === loadingMessage.id)
           
-          // 如果后端返回了最终消息对象，替换本地消息
-          if (result && result.assistantMessage) {
-            // 刷新消息列表
-            setActiveConversation(activeConversationId.value)
+          if (userIndex !== -1) {
+            activeMessages.value[userIndex] = result.userMessage
           }
+          
+          if (assistantIndex !== -1) {
+            // 确保保留AI消息的块和函数调用信息
+            activeMessages.value[assistantIndex] = {
+              ...result.assistantMessage,
+              isLoading: false
+            }
+          }
+          
+          // 刷新会话列表（标题可能已更新）
+          initialize()
         },
+        
         onError: (error) => {
           console.error('流式聊天错误:', error)
           

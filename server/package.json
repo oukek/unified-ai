@@ -12,6 +12,7 @@
       "typeorm": "typeorm-ts-node-commonjs"
    },
    "dependencies": {
+      "@modelcontextprotocol/sdk": "^1.9.0",
       "@oukek/unified-ai": "workspace:*",
       "axios": "^1.8.4",
       "bcrypt": "^5.1.1",
@@ -20,23 +21,23 @@
       "dotenv": "^16.5.0",
       "express": "^5.1.0",
       "jsonwebtoken": "^9.0.2",
+      "pg": "^8.14.1",
       "reflect-metadata": "^0.2.2",
       "socket.io": "^4.8.1",
       "sqlite3": "^5.1.6",
-      "typeorm": "0.3.22",
-      "pg": "^8.14.1"
+      "typeorm": "0.3.22"
    },
    "devDependencies": {
-      "@types/node": "^22.14.1",
-      "ts-node": "^10.9.2",
-      "typescript": "^5.8.3",
       "@types/bcrypt": "^5.0.2",
       "@types/cors": "^2.8.17",
       "@types/express": "^5.0.1",
       "@types/jsonwebtoken": "^9.0.9",
+      "@types/node": "^22.14.1",
       "@typescript-eslint/eslint-plugin": "^8.31.0",
       "@typescript-eslint/parser": "^8.31.0",
       "eslint": "^9.25.1",
-      "nodemon": "^3.1.10"
+      "nodemon": "^3.1.10",
+      "ts-node": "^10.9.2",
+      "typescript": "^5.8.3"
    }
 }

@@ -21,7 +21,7 @@ export class AIController {
     userId: string,
     conversationId: string,
     content: string,
-    socketCallback: (eventType: string, data: any) => void
+    socketCallback: (eventType: string, data: any) => void,
   ): Promise<any> {
     try {
       // 获取会话信息
@@ -39,7 +39,13 @@ export class AIController {
       const messages = await this.messageRepository.findByConversationId(conversationId);
       const history = messages.map(msg => ({
         role: msg.role,
-        content: msg.content
+        content: msg?.blocks?.map(block => {
+          if (block.type === 'text') {
+            return typeof block.content === 'string' ? block.content : JSON.stringify(block.content)
+          } else if (block.type === 'tool') {
+            return JSON.stringify(block.data.result)
+          }
+        }).join('\n') || msg.content
       }));
 
       // 添加用户消息
@@ -110,14 +116,13 @@ export class AIController {
         }
       };
 
-      console.log('conversation.systemMessage', conversation.systemMessage)
       // 发送流式请求到AI
       await this.aiService.sendMessageStream(
         userId,
         content,
         history,
         conversation.systemMessage || undefined,
-        aiCallback
+        aiCallback,
       );
 
       // 流处理完成后，更新最终消息

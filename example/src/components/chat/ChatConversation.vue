@@ -243,7 +243,7 @@ async function handleSendMessage(content: string) {
   if (!conversation.value) return
   
   try {
-    // 使用实际的AI流式响应方法
+    // 不再传递MCP名称，让后端自行获取用户已启用的MCP
     await chatStore.sendMessageToAI(content)
   } catch (error) {
     console.error('发送消息失败:', error)

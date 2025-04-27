@@ -37,15 +37,18 @@ export const USER_SYSTEM_MESSAGE_TEMPLATE = `这是用户的系统消息，在�
  * 问题思考分析提示
  * 用于深度分析和梳理用户问题
  */
-export const THINKING_SYSTEM_PROMPT = `你是一个强大的助手，需要先深度思考和梳理用户的问题，然后提供有条理的分析。
-你的任务是：
-1. 认真思考并分析用户问题的本质和核心需求
-2. 理清问题中的关键点和隐含需求
-3. 识别问题中可能存在的歧义或不清晰之处
-4. 结构化地梳理问题，以便更好地回答
+export const THINKING_SYSTEM_PROMPT = `作为AI助手，我需要分析并重构用户的问题，使其更加清晰和高效。
+我的任务是：
+1. 分析用户问题的本质："用户想要了解/获取/解决..."
+2. 识别问题中的关键信息点和隐含需求
+3. 重新表述问题，使其更加明确、结构化和易于理解
+4. 提炼出问题的核心，消除歧义和冗余表达
 
-注意：这个阶段不是回答问题，而是分析和梳理问题的过程，目的是提供参考以便后续高效回答。
-请用与用户相同的语言回复，除非用户明确要求使用其他语言。
+这个分析过程应该使用自我思考的口吻，如"用户想要..."、"这个问题的核心是..."。
+不要在分析中向用户提问，如"请问您是否需要..."。
+目的是将用户可能不够高效的提问转化为更适合AI处理的形式。
+
+请用与用户相同的语言分析，除非用户明确要求使用其他语言。
 输出应该是纯文本格式，不包含其他额外信息。`
 
 /**
@@ -133,6 +136,23 @@ export const FUNCTION_FOLLOWUP_PROMPT = `
 export const MAX_RECURSION_DEPTH_WARNING = `已达到最大递归深度(%d)。最终结果可能不完整。\n\n%s`
 
 /**
+ * 问题思考工具分析提示
+ * 用于在分析问题时考虑可能适用的工具，但不直接调用
+ */
+export const THINKING_TOOLS_PROMPT = `注意：在分析问题时，你可以考虑哪些工具可能对解决问题有帮助，但请不要直接调用任何工具。
+这只是一个分析过程，目的是更好地理解用户的问题和可能的解决方案。
+请记住，你的回答应该是一份分析，而不是执行操作。`
+
+/**
+ * 问题思考历史记录提示
+ * 用于在分析问题时参考历史对话
+ */
+export const THINKING_HISTORY_PROMPT = `以下是用户的历史对话记录，可以帮助你更好地理解当前问题的上下文。
+分析时请考虑这些历史信息，但最终返回的思考分析不要重复这些历史信息：
+
+%s`
+
+/**
  * 获取增强的系统消息
  *
  * @param options 聊天选项
@@ -164,6 +184,47 @@ export function getEnhancedSystemMessage<T extends ChatOptions | undefined = und
  */
 export function getThinkingPrompt(prompt: string): string {
   return THINKING_INPUT_TEMPLATE.replace('%s', THINKING_SYSTEM_PROMPT).replace('%s', prompt)
+}
+
+/**
+ * 获取带工具信息的问题思考提示
+ *
+ * @param prompt 用户原始提示
+ * @param toolsDescription 工具描述信息
+ * @param history 历史消息记录
+ * @param systemMessage 系统消息
+ * @returns 完整的思考分析提示，包含工具信息和历史
+ */
+export function getThinkingWithToolsPrompt(
+  prompt: string,
+  toolsDescription: string,
+  history?: { role: string, content: string }[],
+  systemMessage?: string,
+): string {
+  const baseThinkingPrompt = getThinkingPrompt(prompt)
+
+  // 构建历史消息部分
+  let historyPart = ''
+  if (history && history.length > 0) {
+    const historyText = history.map(msg =>
+      `${msg.role === 'user' ? '用户' : '助手'}: ${msg.content}`,
+    ).join('\n\n')
+
+    historyPart = `\n\n${THINKING_HISTORY_PROMPT.replace('%s', historyText)}`
+  }
+
+  // 添加系统消息部分
+  const systemPart = systemMessage
+    ? `\n\n系统指令（仅作参考，不要在思考结果中重复）：\n${systemMessage}`
+    : ''
+
+  return `${baseThinkingPrompt}${historyPart}${systemPart}
+  
+${toolsDescription}
+
+${THINKING_TOOLS_PROMPT}
+
+记住：你返回的思考分析应该仅关注于用户当前的问题，不要在结果中重复历史对话或系统指令的内容。思考分析应该帮助用户更好地理解问题本质和可能的解决方案。`
 }
 
 /**

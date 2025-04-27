@@ -1,15 +1,20 @@
 import { GeminiModel, UnifiedAI, ChatRole, AgentEventType } from '@oukek/unified-ai';
 import { ConfigRepository } from '../repositories/ConfigRepository';
 import { UserToolsRepository } from '../repositories/UserToolsRepository';
+import { UserMcpRepository } from '../repositories/UserMcpRepository';
 import { availableTools } from '../utils/tools';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 export class AIService {
   private configRepository: ConfigRepository;
   private userToolsRepository: UserToolsRepository;
+  private userMcpRepository: UserMcpRepository;
   
   constructor() {
     this.configRepository = new ConfigRepository();
     this.userToolsRepository = new UserToolsRepository();
+    this.userMcpRepository = new UserMcpRepository();
   }
   
   /**
@@ -38,6 +43,54 @@ export class AIService {
       throw new Error('用户未配置Gemini API密钥');
     }
     return config.value;
+  }
+  
+  /**
+   * 获取用户MCP配置
+   * @param userId 用户ID
+   */
+  private async getUserMcp(userId: string): Promise<{client?: Client, cleanup?: () => Promise<void>}> {
+    try {
+      // 获取用户MCP配置
+      const userMcps = await this.userMcpRepository.findByUserId(userId);
+      if (!userMcps || !userMcps.enabledMcps || userMcps.enabledMcps.length === 0) {
+        console.warn(`用户未启用任何MCP`);
+        return {};
+      }
+      
+      // 获取第一个启用的MCP
+      const mcpName = userMcps.enabledMcps[0];
+      
+      // 获取MCP配置
+      const mcpConfig = userMcps.mcpConfigs?.[mcpName];
+      if (!mcpConfig || !mcpConfig.command || !Array.isArray(mcpConfig.args)) {
+        console.warn(`MCP配置不完整: ${mcpName}`);
+        return {};
+      }
+      
+      // 创建MCP客户端
+      const mcpClient = new Client({ name: mcpName, version: '1.0.0' });
+      const transport = new StdioClientTransport({
+        command: mcpConfig.command,
+        args: mcpConfig.args,
+        env: Object.assign({}, getDefaultEnvironment(), mcpConfig.env || {})
+      });
+      
+      // 连接到传输层
+      await mcpClient.connect(transport);
+      
+      // 创建清理函数
+      const cleanup = async () => {
+        if (mcpClient) {
+          await mcpClient.close();
+        }
+      };
+      
+      return { client: mcpClient, cleanup };
+    } catch (error) {
+      console.error(`初始化MCP客户端失败:`, error);
+      return {};
+    }
   }
   
   /**
@@ -105,14 +158,28 @@ export class AIService {
     content: string,
     history: Array<{ role: 'user' | 'assistant', content: string }>,
     systemMessage?: string,
-    callback?: (eventType: string, data: any) => void
+    callback?: (eventType: string, data: any) => void,
   ): Promise<void> {
+    // MCP相关资源
+    let mcpClient: Client | undefined;
+    let mcpCleanup: (() => Promise<void>) | undefined;
+    
     try {
       // 获取API密钥
       const apiKey = await this.getUserApiKey(userId);
       
       // 创建AI实例
       const ai = this.createAI(apiKey);
+      
+      // 初始化MCP客户端
+      const { client, cleanup } = await this.getUserMcp(userId);
+      mcpClient = client;
+      mcpCleanup = cleanup;
+      
+      // 如果MCP客户端初始化成功，添加到AI实例
+      if (mcpClient) {
+        ai.useMcp(mcpClient);
+      }
       
       // 获取并添加用户启用的工具
       const tools = await this.getUserTools(userId);
@@ -153,6 +220,15 @@ export class AIService {
     } catch (error) {
       console.error('发送流式消息到AI失败:', error);
       throw error;
+    } finally {
+      // 清理MCP资源
+      if (mcpCleanup) {
+        try {
+          await mcpCleanup();
+        } catch (error) {
+          console.error('清理MCP资源失败:', error);
+        }
+      }
     }
   }
 } 

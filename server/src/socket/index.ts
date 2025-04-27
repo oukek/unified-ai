@@ -62,7 +62,7 @@ export function setupSocketHandlers(io: Server): void {
     });
     
     // 处理AI聊天流式请求
-    socket.on('ai:chatStream', async (data: { conversationId: string; content: string }, callback) => {
+    socket.on('ai:chatStream', async (data: { conversationId: string; content: string; }, callback) => {
       try {
         if (!data.conversationId || !data.content) {
           callback({ success: false, error: '会话ID和消息内容不能为空' });
@@ -81,13 +81,13 @@ export function setupSocketHandlers(io: Server): void {
             conversationId: data.conversationId
           });
         };
-        
+
         // 调用AI处理函数，传入socket回调
         const result = await aiController.handleStreamMessage(
           user.id,
           data.conversationId,
           data.content,
-          socketCallback
+          socketCallback,
         );
         
         // 发送完成事件

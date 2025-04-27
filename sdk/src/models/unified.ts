@@ -3,6 +3,7 @@ import type {
   AgentCallback,
   AgentFunction,
   AgentFunctionSchema,
+  ChatMessage,
   ChatOptions,
   FunctionCall,
   ResponseTypeForOptions,
@@ -18,7 +19,7 @@ import {
   FunctionCallParser,
   getEnhancedSystemMessage,
   getMaxRecursionDepthWarning,
-  getThinkingPrompt,
+  getThinkingWithToolsPrompt,
   JsonHelper,
   ModelHelpers,
   PromptEnhancer,
@@ -376,19 +377,29 @@ export class UnifiedAI extends BaseModel {
     return { processedContent, isJsonResponse }
   }
 
-  private async optimizeUserQuestion(prompt: string, callback?: AgentCallback) {
-    // 使用思考提示模板
-    const thinkingPrompt = getThinkingPrompt(prompt)
+  private async optimizeUserQuestion(prompt: string, tools: AgentFunctionSchema[], history?: ChatMessage[], systemMessage?: string, callback?: AgentCallback) {
+    // 构建工具信息描述
+    const toolsDescription = tools.length > 0
+      ? `可用工具列表：\n${tools.map(tool =>
+        `- ${tool.name}: ${tool.description}`,
+      ).join('\n')}`
+      : ''
 
-    // 使用流式响应来处理
-    let analysis = ''
+    // 使用集中管理的提示模板，传入历史记录和系统消息
+    const enhancedThinkingPrompt = getThinkingWithToolsPrompt(
+      prompt,
+      toolsDescription,
+      history,
+      systemMessage,
+    )
 
     // 通知思考开始
     callback?.(AgentEventType.THINKING_START, { prompt, options: {} })
 
     try {
       // 使用流式API获取思考过程
-      for await (const chunk of this.baseModel.unifiedChatStream(thinkingPrompt, {
+      let analysis = ''
+      for await (const chunk of this.baseModel.unifiedChatStream(enhancedThinkingPrompt, {
         responseFormat: ResponseFormat.TEXT, // 确保是文本格式
       })) {
         // 获取chunk内容
@@ -413,8 +424,7 @@ export class UnifiedAI extends BaseModel {
         result: analysis,
       })
 
-      // 返回原始问题，因为这只是思考过程
-      return prompt
+      return analysis
     }
     catch (error) {
       console.error('思考问题过程出错:', error)
@@ -445,19 +455,19 @@ export class UnifiedAI extends BaseModel {
       optimizeUserQuestion: true,
     }, options)
 
+    // 获取所有工具
+    const tools = await this.getAllTools()
+
     // 通知开始响应
     if (depth === 0) {
       // 如果用户要求优化问题，则将问题优化，默认优化
       if (options?.optimizeUserQuestion) {
-        prompt = await this.optimizeUserQuestion(prompt, callback)
+        prompt = await this.optimizeUserQuestion(prompt, tools, options?.history, options?.systemMessage, callback)
       }
       callback?.(AgentEventType.RESPONSE_START, { prompt, options })
     }
 
     try {
-      // 获取所有工具
-      const tools = await this.getAllTools()
-
       const enhancedSystemMessage = getEnhancedSystemMessage(options, tools)
 
       // 处理系统消息和提示

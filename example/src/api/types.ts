@@ -73,5 +73,19 @@ export interface UserTools {
   toolConfigs: Record<string, any>;
 }
 
+// MCP相关类型
+export interface Mcp {
+  name: string;
+  desc?: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
+export interface UserMcps {
+  enabledMcps: string[];
+  mcpConfigs: Record<string, any>;
+}
+
 // 响应类型
 export type ApiResponse<T> = Promise<AxiosResponse<T>>; 

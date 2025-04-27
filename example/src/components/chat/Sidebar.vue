@@ -51,13 +51,20 @@
           </span>
           <span>工具</span>
         </button>
-        <button class="settings-btn" @click="showSettingsModal = true">
+        <button class="mcp-btn" @click="showMcpsModal = true">
           <span class="icon">
-            <SvgIcon name="settings" :size="16" color="#666" />
+            <SvgIcon name="code" :size="16" color="#666" />
           </span>
-          <span>设置</span>
+          <span>MCP</span>
         </button>
       </div>
+      
+      <button class="settings-btn" @click="showSettingsModal = true">
+        <span class="icon">
+          <SvgIcon name="settings" :size="16" color="#666" />
+        </span>
+        <span>模型设置</span>
+      </button>
       
       <div class="user-profile" v-if="userStore.isLoggedIn">
         <div class="user-avatar">
@@ -78,6 +85,10 @@
       <ToolsModal
         :is-open="showToolsModal"
         @close="showToolsModal = false"
+      />
+      <McpsModal
+        :is-open="showMcpsModal"
+        @close="showMcpsModal = false"
       />
     </div>
     
@@ -113,6 +124,7 @@ import { ref } from 'vue'
 import SettingsModal from './SettingsModal.vue'
 import SvgIcon from '@/components/common/SvgIcon.vue'
 import ToolsModal from './ToolsModal.vue'
+import McpsModal from './McpsModal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -122,6 +134,7 @@ dayjs.locale('zh-cn')
 
 const showSettingsModal = ref(false)
 const showToolsModal = ref(false)
+const showMcpsModal = ref(false)
 const showLogoutConfirm = ref(false)
 const chatStore = useChatStore()
 const userStore = useUserStore()
@@ -342,7 +355,7 @@ function formatDate(date: string | Date): string {
       gap: 10px;
       margin-bottom: 16px;
       
-      .tools-btn, .settings-btn {
+      .tools-btn, .mcp-btn {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -367,6 +380,34 @@ function formatDate(date: string | Date): string {
           width: 20px;
           height: 20px;
         }
+      }
+    }
+    
+    .settings-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      background-color: #f0f0f0;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      
+      &:hover {
+        background-color: #e5e5e5;
+      }
+      
+      .icon {
+        margin-right: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
       }
     }
     
