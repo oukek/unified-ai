@@ -55,6 +55,8 @@ export interface ChatOptions {
   responseFormat?: ResponseFormat
   /** 系统消息 */
   systemMessage?: string
+  /** 是否思考优化用户的问题 */
+  optimizeUserQuestion?: boolean
   /** 自定义模型参数 */
   [key: string]: any
 }

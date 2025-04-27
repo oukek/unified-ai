@@ -1,35 +1,28 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { saveData, getData, DB, encrypt, decrypt } from '../utils/db'
+import configApi from '../api/modules/config'
 
 export const useSettingsStore = defineStore('settings', () => {
   const geminiApiKey = ref<string>('')
   const isLoading = ref<boolean>(false)
-  
-  // 保存设置
-  async function saveSetting(key: string, value: string): Promise<void> {
+  const initialized = ref<boolean>(false)
+
+  // 保存设置到服务器
+  async function saveSetting(type: string, value: string): Promise<void> {
     try {
-      // 加密值
-      const encryptedValue = encrypt(value)
-      await saveData(DB.STORES.SETTINGS, { key, value: encryptedValue })
+      await configApi.upsertUserConfig(type, value)
     } catch (error) {
       console.error('保存设置失败:', error)
       throw error
     }
   }
 
-  // 获取设置
-  async function getSetting(key: string): Promise<string | null> {
+  // 从服务器获取设置
+  async function getSetting(type: string): Promise<string | null> {
     try {
-      const data = await getData<{key: string, value: string}>(DB.STORES.SETTINGS, key)
-      if (data && data.value) {
-        try {
-          // 解密值
-          return decrypt(data.value)
-        } catch (error) {
-          console.error('解密设置值失败:', error)
-          return null
-        }
+      const response = await configApi.getUserConfigByType(type)
+      if (response.data && response.data.value) {
+        return response.data.value
       }
       return null
     } catch (error) {
@@ -40,12 +33,22 @@ export const useSettingsStore = defineStore('settings', () => {
   
   // 初始化
   async function initialize() {
+    // 防止重复初始化
+    if (initialized.value || isLoading.value) {
+      return;
+    }
+    
     isLoading.value = true
+    console.log('初始化设置...')
+    
     try {
       const savedKey = await getSetting('geminiApiKey')
       if (savedKey) {
         geminiApiKey.value = savedKey
       }
+      
+      initialized.value = true
+      console.log('设置初始化完成')
     } catch (error) {
       console.error('初始化设置失败:', error)
     } finally {
@@ -81,12 +84,13 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
   
-  // 自动初始化
-  initialize()
+  // 不再自动初始化
+  // initialize()
   
   return {
     geminiApiKey,
     isLoading,
+    initialized,
     initialize,
     saveGeminiApiKey,
     clearGeminiApiKey

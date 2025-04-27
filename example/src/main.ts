@@ -3,6 +3,7 @@ import App from './App.vue'
 import router from './router'
 import pinia from './stores'
 import GlobalToast from './components/common/GlobalToast.vue'
+import { initSocketManager } from './utils/socketManager'
 
 const app = createApp(App)
 
@@ -16,5 +17,8 @@ ToastPlugin.mount('#global-toast')
 
 app.use(router)
 app.use(pinia)
+
+// 初始化Socket管理器
+initSocketManager()
 
 app.mount('#app')

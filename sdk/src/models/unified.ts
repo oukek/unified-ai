@@ -3,6 +3,7 @@ import type {
   AgentCallback,
   AgentFunction,
   AgentFunctionSchema,
+  ChatMessage,
   ChatOptions,
   FunctionCall,
   ResponseTypeForOptions,
@@ -16,6 +17,9 @@ import { AgentEventType, ResponseFormat } from '../types'
 import {
   FunctionCallExecutor,
   FunctionCallParser,
+  getEnhancedSystemMessage,
+  getMaxRecursionDepthWarning,
+  getThinkingWithToolsPrompt,
   JsonHelper,
   ModelHelpers,
   PromptEnhancer,
@@ -104,6 +108,7 @@ export class UnifiedAI extends BaseModel {
         name: tool.name,
         description: tool.description || '',
         parameters,
+        config: tool.config,
         executor: tool.executor,
       }
     })
@@ -242,8 +247,8 @@ export class UnifiedAI extends BaseModel {
       // 如果深度太大，停止递归
       if (depth >= (this.maxRecursionDepth || 25) - 1) {
         const finalResponse = {
-          content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}`,
-          isJsonResponse: false,
+          content: getMaxRecursionDepthWarning(depth, cleanContent) as any,
+          isJsonResponse: false as any,
           model: currentModel,
           functionCalls: allExecutedCalls,
           isLast: true,
@@ -289,8 +294,8 @@ export class UnifiedAI extends BaseModel {
    * @param options 聊天选项
    * @returns 增强后的提示和处理后的选项
    */
-  private handlePromptAndSystemMessage<T extends ChatOptions | undefined = undefined>(prompt: string, options: T) {
-    const systemMessage = options?.systemMessage || ''
+  private handlePromptAndSystemMessage<T extends ChatOptions | undefined = undefined>(prompt: string, options: T, enhancedSystemMessage?: string) {
+    const systemMessage = enhancedSystemMessage || options?.systemMessage || ''
     let enhancedPrompt = prompt
     const enhancedOptions = { ...options } as T
 
@@ -372,6 +377,62 @@ export class UnifiedAI extends BaseModel {
     return { processedContent, isJsonResponse }
   }
 
+  private async optimizeUserQuestion(prompt: string, tools: AgentFunctionSchema[], history?: ChatMessage[], systemMessage?: string, callback?: AgentCallback) {
+    // 构建工具信息描述
+    const toolsDescription = tools.length > 0
+      ? `可用工具列表：\n${tools.map(tool =>
+        `- ${tool.name}: ${tool.description}`,
+      ).join('\n')}`
+      : ''
+
+    // 使用集中管理的提示模板，传入历史记录和系统消息
+    const enhancedThinkingPrompt = getThinkingWithToolsPrompt(
+      prompt,
+      toolsDescription,
+      history,
+      systemMessage,
+    )
+
+    // 通知思考开始
+    callback?.(AgentEventType.THINKING_START, { prompt, options: {} })
+
+    try {
+      // 使用流式API获取思考过程
+      let analysis = ''
+      for await (const chunk of this.baseModel.unifiedChatStream(enhancedThinkingPrompt, {
+        responseFormat: ResponseFormat.TEXT, // 确保是文本格式
+      })) {
+        // 获取chunk内容
+        const chunkContent = typeof chunk.content === 'object'
+          ? JSON.stringify(chunk.content)
+          : chunk.content as string
+
+        // 累积内容
+        analysis += chunkContent
+
+        // 通知每个思考块
+        callback?.(AgentEventType.THINKING_CHUNK, {
+          chunk: {
+            content: chunkContent,
+            isLast: chunk.isLast || false,
+          },
+        })
+      }
+
+      // 通知思考完成
+      callback?.(AgentEventType.THINKING_END, {
+        result: analysis,
+      })
+
+      return analysis
+    }
+    catch (error) {
+      console.error('思考问题过程出错:', error)
+      // 出错时返回原始问题
+      return prompt
+    }
+  }
+
   /**
    * 统一接口：流式返回聊天响应
    * @param prompt 提示/消息内容
@@ -390,18 +451,28 @@ export class UnifiedAI extends BaseModel {
     // 保存原始用户提示，确保它不会在多轮函数调用中丢失
     const originalUserPrompt = prompt
 
+    options = Object.assign({
+      optimizeUserQuestion: true,
+    }, options)
+
+    // 获取所有工具
+    const tools = await this.getAllTools()
+
     // 通知开始响应
     if (depth === 0) {
+      // 如果用户要求优化问题，则将问题优化，默认优化
+      if (options?.optimizeUserQuestion) {
+        prompt = await this.optimizeUserQuestion(prompt, tools, options?.history, options?.systemMessage, callback)
+      }
       callback?.(AgentEventType.RESPONSE_START, { prompt, options })
     }
 
     try {
+      const enhancedSystemMessage = getEnhancedSystemMessage(options, tools)
+
       // 处理系统消息和提示
       const { enhancedPrompt, enhancedOptions, systemMessage, currentModel, supportsSystemMessages }
-        = this.handlePromptAndSystemMessage(prompt, options)
-
-      // 获取所有工具
-      const tools = await this.getAllTools()
+        = this.handlePromptAndSystemMessage(prompt, options, enhancedSystemMessage)
 
       // 准备选项和增强提示
       const { finalOptions, enhancedPrompt: finalPrompt }
@@ -549,7 +620,7 @@ export class UnifiedAI extends BaseModel {
             // 如果深度太大，停止递归
             if (depth >= (this.maxRecursionDepth || 25) - 1) {
               const finalChunk = {
-                content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}` as any,
+                content: getMaxRecursionDepthWarning(depth, cleanContent) as any,
                 isJsonResponse: false as any,
                 isLast: true,
                 model: currentModel,

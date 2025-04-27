@@ -51,13 +51,33 @@
           </span>
           <span>工具</span>
         </button>
-        <button class="settings-btn" @click="showSettingsModal = true">
+        <button class="mcp-btn" @click="showMcpsModal = true">
           <span class="icon">
-            <SvgIcon name="settings" :size="16" color="#666" />
+            <SvgIcon name="code" :size="16" color="#666" />
           </span>
-          <span>设置</span>
+          <span>MCP</span>
         </button>
       </div>
+      
+      <button class="settings-btn" @click="showSettingsModal = true">
+        <span class="icon">
+          <SvgIcon name="settings" :size="16" color="#666" />
+        </span>
+        <span>模型设置</span>
+      </button>
+      
+      <div class="user-profile" v-if="userStore.isLoggedIn">
+        <div class="user-avatar">
+          <SvgIcon name="user" :size="28" color="#666" />
+        </div>
+        <div class="user-info">
+          <div class="username">{{ userStore.currentUser?.username }}</div>
+          <button class="logout-btn" @click="showLogoutConfirm = true">
+            退出登录
+          </button>
+        </div>
+      </div>
+      
       <SettingsModal 
         :is-open="showSettingsModal" 
         @close="showSettingsModal = false" 
@@ -65,6 +85,10 @@
       <ToolsModal
         :is-open="showToolsModal"
         @close="showToolsModal = false"
+      />
+      <McpsModal
+        :is-open="showMcpsModal"
+        @close="showMcpsModal = false"
       />
     </div>
     
@@ -78,21 +102,42 @@
       @confirm="confirmDelete"
       @cancel="cancelDelete"
     />
+    
+    <!-- 退出登录确认对话框 -->
+    <ConfirmDialog
+      :is-open="showLogoutConfirm"
+      title="退出登录"
+      message="确定要退出登录吗？"
+      confirm-text="退出"
+      cancel-text="取消"
+      @confirm="logout"
+      @cancel="() => showLogoutConfirm = false"
+    />
   </aside>
 </template>
 
 <script setup lang="ts">
 import { useChatStore } from '@/stores/chat'
+import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
 import SettingsModal from './SettingsModal.vue'
 import SvgIcon from '@/components/common/SvgIcon.vue'
 import ToolsModal from './ToolsModal.vue'
+import McpsModal from './McpsModal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
+
+// 设置 dayjs 语言为中文
+dayjs.locale('zh-cn')
 
 const showSettingsModal = ref(false)
 const showToolsModal = ref(false)
+const showMcpsModal = ref(false)
+const showLogoutConfirm = ref(false)
 const chatStore = useChatStore()
+const userStore = useUserStore()
 const { conversations, activeConversationId } = storeToRefs(chatStore)
 const hoveringId = ref<string | null>(null)
 
@@ -140,30 +185,29 @@ function cancelDelete() {
   conversationToDelete.value = null
 }
 
+// 退出登录
+function logout() {
+  userStore.logout()
+  showLogoutConfirm.value = false
+}
+
 // 格式化日期
-function formatDate(date: Date): string {
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
+function formatDate(date: string | Date): string {
+  const dateObj = dayjs(date)
+  const now = dayjs()
   
-  // 如果是今天，显示时间
-  if (diff < 24 * 60 * 60 * 1000 && 
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  // 如果是今天，显示时间 HH:mm
+  if (dateObj.isSame(now, 'day')) {
+    return dateObj.format('HH:mm')
   }
   
   // 如果是昨天，显示"昨天"
-  const yesterday = new Date(now)
-  yesterday.setDate(now.getDate() - 1)
-  if (date.getDate() === yesterday.getDate() &&
-      date.getMonth() === yesterday.getMonth() &&
-      date.getFullYear() === yesterday.getFullYear()) {
+  if (dateObj.isSame(now.subtract(1, 'day'), 'day')) {
     return '昨天'
   }
   
-  // 否则显示日期
-  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+  // 否则显示日期 MM/DD
+  return dateObj.format('MM/DD')
 }
 </script>
 
@@ -227,7 +271,6 @@ function formatDate(date: Date): string {
       margin: 0;
       
       li {
-        margin-bottom: 8px;
         border-radius: 4px;
         transition: background-color 0.2s;
         
@@ -310,8 +353,9 @@ function formatDate(date: Date): string {
     .footer-buttons {
       display: flex;
       gap: 10px;
+      margin-bottom: 16px;
       
-      .tools-btn, .settings-btn {
+      .tools-btn, .mcp-btn {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -335,6 +379,81 @@ function formatDate(date: Date): string {
           justify-content: center;
           width: 20px;
           height: 20px;
+        }
+      }
+    }
+    
+    .settings-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      background-color: #f0f0f0;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      
+      &:hover {
+        background-color: #e5e5e5;
+      }
+      
+      .icon {
+        margin-right: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+      }
+    }
+    
+    .user-profile {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      background-color: #edf7ed;
+      border-radius: 8px;
+      
+      .user-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background-color: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+      }
+      
+      .user-info {
+        flex: 1;
+        overflow: hidden;
+        
+        .username {
+          font-weight: 600;
+          margin-bottom: 4px;
+          font-size: 14px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        
+        .logout-btn {
+          background: none;
+          border: none;
+          color: #f44336;
+          font-size: 12px;
+          padding: 0;
+          cursor: pointer;
+          text-decoration: underline;
+          
+          &:hover {
+            color: darken(#f44336, 10%);
+          }
         }
       }
     }

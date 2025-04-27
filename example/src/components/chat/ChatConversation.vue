@@ -36,9 +36,9 @@
       </div>
       
       <div class="messages-container" ref="messagesContainerRef">
-        <div v-if="conversation.messages.length > 0" class="messages-list">
+        <div v-if="activeMessages.length > 0" class="messages-list">
           <MessageItem 
-            v-for="message in conversation.messages" 
+            v-for="message in activeMessages" 
             :key="message.id" 
             :message="message" 
             @scroll-to-bottom="() => scrollToBottom()"
@@ -58,7 +58,7 @@
       <div class="input-container">
         <MessageInput @send="handleSendMessage" />
         <div class="input-tips">
-          提示: 按 Enter 发送, Shift+Enter 换行
+          提示: 按 Shift+Enter 发送, Enter 换行
         </div>
       </div>
     </div>
@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import MessageItem from './MessageItem.vue'
 import MessageInput from './MessageInput.vue'
 import { useChatStore } from '@/stores/chat'
@@ -93,7 +93,7 @@ import SvgIcon from '@/components/common/SvgIcon.vue'
 import Toast from '@/components/common/Toast.vue'
 
 const chatStore = useChatStore()
-const { activeConversation } = storeToRefs(chatStore)
+const { activeConversation, activeMessages } = storeToRefs(chatStore)
 
 // Toast提示相关
 const showToast = ref(false)
@@ -109,6 +109,9 @@ function showMessage(message: string, type: 'info' | 'success' | 'error' | 'warn
 
 const conversation = computed(() => activeConversation.value)
 const messagesContainerRef = ref<HTMLElement | null>(null)
+
+// 跟踪用户是否主动滚动
+const userHasScrolled = ref(false)
 
 // 系统消息面板状态
 const showSystemMessagePanel = ref(false)
@@ -146,22 +149,30 @@ function cancelSystemMessage() {
 }
 
 // 监听消息变化，自动滚动到底部
-watch(() => conversation.value?.messages.length, () => {
-  scrollToBottom()
+watch(() => activeMessages.value.length, () => {
+  // 消息数量变化，强制滚动到底部
+  userHasScrolled.value = false
+  scrollToBottom(true)
 }, { immediate: true })
 
 // 监听单个消息的内容变化，也触发滚动
 watch(() => {
-  if (!conversation.value) return []
-  return conversation.value.messages.map(m => m.content)
+  if (!activeMessages.value) return []
+  return activeMessages.value.map(m => [m.content, m.isLoading])
 }, () => {
-  scrollToBottom()
+  // 检查是否有正在加载的消息
+  const hasLoadingMessage = activeMessages.value.some(m => m.isLoading)
+  if (hasLoadingMessage || chatStore.isSending) {
+    // 如果有加载中的消息或正在发送，始终滚动到底部
+    scrollToBottom()
+  }
 }, { deep: true })
 
 // 监听会话变化，初始加载时强制滚动到底部
 watch(() => conversation.value?.id, (newId) => {
   if (newId) {
-    // 会话ID改变时，表示切换到了新会话，强制滚动到底部
+    // 会话ID改变时，表示切换到了新会话，强制滚动到底部并重置用户滚动状态
+    userHasScrolled.value = false
     scrollToBottom(true)
   }
 }, { immediate: true })
@@ -178,11 +189,13 @@ function scrollToBottom(isInitialLoad = false) {
         container.scrollTop = container.scrollHeight
       }
       
-      // 如果是初始加载、用户正在底部附近，或者有新消息到来，自动滚动
-      if (isInitialLoad || isNearBottom || chatStore.isSending) {
+      // 如果是初始加载、用户正在底部附近或未主动滚动，或者有新消息到来但用户未主动滚动，自动滚动
+      if (isInitialLoad || (isNearBottom && !userHasScrolled) || (chatStore.isSending && !userHasScrolled)) {
         if (isInitialLoad) {
           // 初始加载时添加小延迟确保DOM完全渲染
           setTimeout(scrollAction, 100)
+          // 重置用户滚动状态
+          userHasScrolled.value = false
         } else {
           scrollAction()
         }
@@ -191,10 +204,38 @@ function scrollToBottom(isInitialLoad = false) {
   })
 }
 
-// 挂载时滚动到底部
+// 添加滚动事件监听器
+function handleScroll() {
+  if (messagesContainerRef.value) {
+    const container = messagesContainerRef.value
+    const isScrolledUp = container.scrollHeight - container.scrollTop - container.clientHeight > 100
+    
+    // 如果用户向上滚动超过100px，记录用户已主动滚动
+    if (isScrolledUp) {
+      userHasScrolled.value = true
+    } else {
+      // 如果滚动回底部区域，重置状态
+      userHasScrolled.value = false
+    }
+  }
+}
+
+// 挂载时滚动到底部并添加滚动事件监听
 onMounted(() => {
   // 使用强制滚动模式，确保首次加载时滚动到底部
   scrollToBottom(true)
+  
+  // 添加滚动事件监听器
+  if (messagesContainerRef.value) {
+    messagesContainerRef.value.addEventListener('scroll', handleScroll)
+  }
+})
+
+// 组件卸载时移除事件监听
+onUnmounted(() => {
+  if (messagesContainerRef.value) {
+    messagesContainerRef.value.removeEventListener('scroll', handleScroll)
+  }
 })
 
 // 处理消息发送
@@ -202,8 +243,8 @@ async function handleSendMessage(content: string) {
   if (!conversation.value) return
   
   try {
-    // 使用实际的AI流式响应方法
-    await chatStore.sendMessageToAIStream(content)
+    // 不再传递MCP名称，让后端自行获取用户已启用的MCP
+    await chatStore.sendMessageToAI(content)
   } catch (error) {
     console.error('发送消息失败:', error)
     

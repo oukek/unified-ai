@@ -23,7 +23,7 @@
               <SvgIcon :name="showApiKey ? 'eye' : 'eye-off'" :size="18" />
             </button>
           </div>
-          <p class="help-text">您的API密钥将被加密保存在本地，不会上传到任何服务器。</p>
+          <p class="help-text">您的API密钥将会存储在服务器上。</p>
         </div>
       </div>
       <div class="modal-footer">
@@ -44,6 +44,7 @@
 import { ref, onMounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import SvgIcon from '@/components/common/SvgIcon.vue'
+import { showError, showSuccess } from '@/utils/toast'
 
 defineProps<{
   isOpen: boolean
@@ -60,7 +61,9 @@ const isLoading = ref(false)
 
 onMounted(async () => {
   // 初始化设置
-  await settingsStore.initialize()
+  if (!settingsStore.initialized) {
+    await settingsStore.initialize()
+  }
   apiKeyInput.value = settingsStore.geminiApiKey
 })
 
@@ -76,10 +79,11 @@ async function saveSettings() {
   isLoading.value = true
   try {
     await settingsStore.saveGeminiApiKey(apiKeyInput.value)
+    showSuccess('API Key 保存成功')
     closeModal()
   } catch (error) {
     console.error('保存设置失败:', error)
-    alert('保存设置失败，请重试。')
+    showError('保存设置失败，请重试')
   } finally {
     isLoading.value = false
   }

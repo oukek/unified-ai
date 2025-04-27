@@ -1,0 +1,32 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 服务器指南
+
+服务器部分提供了应用的后端支持，使用 Express 和 Socket.io 构建。
+
+## 目录结构
+
+- [src/index.ts](mdc:server/src/index.ts): 服务器的入口文件
+- [src/config.ts](mdc:server/src/config.ts): 服务器配置
+- [src/db.ts](mdc:server/src/db.ts): 数据库连接
+- [src/controllers](mdc:server/src/controllers): 包含控制器
+- [src/services](mdc:server/src/services): 包含服务
+- [src/routes](mdc:server/src/routes): 包含路由定义
+- [src/middlewares](mdc:server/src/middlewares): 包含中间件
+- [src/entities](mdc:server/src/entities): 包含实体定义
+- [src/repositories](mdc:server/src/repositories): 包含数据访问层
+- [src/socket](mdc:server/src/socket): 包含 Socket.io 处理器
+- [src/types](mdc:server/src/types): 包含类型定义
+- [src/utils](mdc:server/src/utils): 包含工具函数
+
+## 主要特性
+
+服务器提供以下主要功能：
+
+1. RESTful API
+2. WebSocket 实时通信
+3. 数据库集成
+4. 身份验证和授权

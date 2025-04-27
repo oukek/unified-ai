@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# SDK 指南
+
+SDK 是 UnifiedAI 的核心部分，提供统一的接口访问各种 AI 模型。
+
+## 目录结构
+
+- [src/index.ts](mdc:sdk/src/index.ts): SDK 的入口文件
+- [src/base](mdc:sdk/src/base): 包含基础模型和接口定义
+- [src/models](mdc:sdk/src/models): 包含各种模型的实现
+- [src/types](mdc:sdk/src/types): 包含类型定义
+- [src/utils](mdc:sdk/src/utils): 包含工具函数
+
+## 主要功能
+
+SDK 提供以下主要功能：
+
+1. 统一的 API 接口设计，一套代码适配多种模型
+2. 支持多种主流 AI 模型（如 Gemini 等）
+3. 支持标准响应和流式响应两种交互模式
+4. 强大的 Agent 功能（函数调用），支持链式调用执行
+5. 支持 Model Context Protocol (MCP)，可与文件系统等外部工具交互
+6. 内置 JSON 修复功能，自动处理模型返回的非标准 JSON
