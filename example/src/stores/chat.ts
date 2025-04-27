@@ -190,7 +190,9 @@ export const useChatStore = defineStore('chat', () => {
     try {
       // 添加消息到显示列表（临时ID版本）
       activeMessages.value.push(userMessage)
+      userMessage = activeMessages.value[activeMessages.value.length - 1]
       activeMessages.value.push(loadingMessage)
+      loadingMessage = activeMessages.value[activeMessages.value.length - 1]
       
       // 使用WebSocket进行流式聊天，不再传递mcpName参数
       await startAIStreamChat(activeConversationId.value, content, {
@@ -200,8 +202,8 @@ export const useChatStore = defineStore('chat', () => {
         },
         
         onContent: (chunk) => {
-          // 追加内容到加载中消息
-          loadingMessage.content += chunk
+          // 确保isLoading为true以维持打字机效果
+          loadingMessage.isLoading = true
           
           // 创建或更新文本块
           const lastBlock = loadingMessage.blocks?.length ? loadingMessage.blocks[loadingMessage.blocks.length - 1] : null
@@ -221,6 +223,8 @@ export const useChatStore = defineStore('chat', () => {
         },
         
         onFunctionCallStart: (call) => {
+          // 确保isLoading为true以维持打字机效果
+          loadingMessage.isLoading = true
           console.log('函数调用开始:', call.name)
           
           // 添加函数调用块
@@ -242,6 +246,8 @@ export const useChatStore = defineStore('chat', () => {
         },
         
         onFunctionCallEnd: (call) => {
+          // 确保isLoading为true以维持打字机效果
+          loadingMessage.isLoading = true
           console.log('函数调用结束:', call.name, call.result)
           
           // 更新现有的函数调用块
@@ -269,6 +275,7 @@ export const useChatStore = defineStore('chat', () => {
         
         onComplete: (result) => {
           console.log('AI响应完成', result)
+          loadingMessage.isLoading = false
           
           // 使用服务器返回的真实ID替换临时ID
           const userIndex = activeMessages.value.findIndex(m => m.id === userMessage.id)
@@ -279,15 +286,14 @@ export const useChatStore = defineStore('chat', () => {
           }
           
           if (assistantIndex !== -1) {
-            // 确保保留AI消息的块和函数调用信息
+            // 确保保留前端生成的blocks信息，而不是使用服务器返回的
+            // 只更新必要的字段
             activeMessages.value[assistantIndex] = {
               ...result.assistantMessage,
+              blocks: loadingMessage.blocks || [],  // 保留前端生成的blocks
               isLoading: false
             }
           }
-          
-          // 刷新会话列表（标题可能已更新）
-          initialize()
         },
         
         onError: (error) => {

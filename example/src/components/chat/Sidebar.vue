@@ -13,34 +13,40 @@
     
     <div class="sidebar-content">
       <h3>最近会话</h3>
-      <ul class="conversation-list">
-        <li 
-          v-for="conversation in conversations" 
-          :key="conversation.id"
-          :class="{ active: conversation.id === activeConversationId }"
-          @click="setActiveConversation(conversation.id)"
-          @mouseenter="showDeleteButton(conversation.id)"
-          @mouseleave="hideDeleteButton()"
-        >
-          <div class="conversation-item">
-            <span class="icon">
-              <SvgIcon name="chat" :size="16" color="#666" />
-            </span>
-            <span class="title">{{ conversation.title }}</span>
-            <span class="date">{{ formatDate(conversation.updatedAt) }}</span>
-            <button 
-              class="delete-btn" 
-              @click.stop="openDeleteConfirm(conversation.id)"
-              title="删除会话"
-              :style="{ opacity: hoveringId === conversation.id ? 1 : 0 }"
-            >
-              <span class="icon">
-                <SvgIcon name="trash" :size="16" :color="'#888'" />
-              </span>
-            </button>
+      <div class="conversation-categories">
+        <template v-for="(categoryConversations, category) in groupedConversations" :key="category">
+          <div class="category-section" v-if="categoryConversations.length > 0">
+            <h4 class="category-title">{{ category }}</h4>
+            <ul class="conversation-list">
+              <li 
+                v-for="conversation in categoryConversations" 
+                :key="conversation.id"
+                :class="{ active: conversation.id === activeConversationId }"
+                @click="setActiveConversation(conversation.id)"
+                @mouseenter="showDeleteButton(conversation.id)"
+                @mouseleave="hideDeleteButton()"
+              >
+                <div class="conversation-item">
+                  <span class="icon">
+                    <SvgIcon name="chat" :size="16" color="#666" />
+                  </span>
+                  <span class="title">{{ conversation.title }}</span>
+                  <button 
+                    class="delete-btn" 
+                    @click.stop="openDeleteConfirm(conversation.id)"
+                    title="删除会话"
+                    :style="{ opacity: hoveringId === conversation.id ? 1 : 0 }"
+                  >
+                    <span class="icon">
+                      <SvgIcon name="trash" :size="16" :color="'#888'" />
+                    </span>
+                  </button>
+                </div>
+              </li>
+            </ul>
           </div>
-        </li>
-      </ul>
+        </template>
+      </div>
     </div>
     
     <div class="sidebar-footer">
@@ -120,17 +126,13 @@
 import { useChatStore } from '@/stores/chat'
 import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import SettingsModal from './SettingsModal.vue'
 import SvgIcon from '@/components/common/SvgIcon.vue'
 import ToolsModal from './ToolsModal.vue'
 import McpsModal from './McpsModal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import dayjs from 'dayjs'
-import 'dayjs/locale/zh-cn'
-
-// 设置 dayjs 语言为中文
-dayjs.locale('zh-cn')
+import { getTimeCategory } from '@/utils/time'
 
 const showSettingsModal = ref(false)
 const showToolsModal = ref(false)
@@ -191,24 +193,30 @@ function logout() {
   showLogoutConfirm.value = false
 }
 
-// 格式化日期
-function formatDate(date: string | Date): string {
-  const dateObj = dayjs(date)
-  const now = dayjs()
+// 按时间分类的会话
+const groupedConversations = computed(() => {
+  const result: Record<string, typeof conversations.value> = {}
   
-  // 如果是今天，显示时间 HH:mm
-  if (dateObj.isSame(now, 'day')) {
-    return dateObj.format('HH:mm')
-  }
+  // 遍历所有会话，按时间分类
+  conversations.value.forEach(conversation => {
+    const category = getTimeCategory(conversation.updatedAt)
+    
+    if (!result[category]) {
+      result[category] = []
+    }
+    
+    result[category].push(conversation)
+  })
   
-  // 如果是昨天，显示"昨天"
-  if (dateObj.isSame(now.subtract(1, 'day'), 'day')) {
-    return '昨天'
-  }
+  // 对每个分类内的会话按更新时间降序排序
+  Object.keys(result).forEach(category => {
+    result[category].sort((a, b) => 
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
+  })
   
-  // 否则显示日期 MM/DD
-  return dateObj.format('MM/DD')
-}
+  return result
+})
 </script>
 
 <style lang="less" scoped>
@@ -265,6 +273,24 @@ function formatDate(date: string | Date): string {
       font-weight: 500;
     }
     
+    .conversation-categories {
+      .category-section {
+        margin-bottom: 12px;
+        
+        &:last-child {
+          margin-bottom: 0;
+        }
+        
+        .category-title {
+          font-size: 12px;
+          color: #888;
+          margin: 0 0 4px 0;
+          padding-left: 4px;
+          font-weight: 500;
+        }
+      }
+    }
+    
     .conversation-list {
       list-style: none;
       padding: 0;
@@ -273,6 +299,7 @@ function formatDate(date: string | Date): string {
       li {
         border-radius: 4px;
         transition: background-color 0.2s;
+        margin-bottom: 2px;
         
         &.active {
           background-color: #e1f5e1;
@@ -293,16 +320,16 @@ function formatDate(date: string | Date): string {
       .conversation-item {
         display: flex;
         align-items: center;
-        padding: 10px;
+        padding: 6px 8px;
         cursor: pointer;
         
         .icon {
-          margin-right: 10px;
+          margin-right: 6px;
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 20px;
-          height: 20px;
+          width: 18px;
+          height: 18px;
           flex-shrink: 0;
         }
         
@@ -312,12 +339,6 @@ function formatDate(date: string | Date): string {
           overflow: hidden;
           text-overflow: ellipsis;
           font-size: 14px;
-        }
-        
-        .date {
-          font-size: 12px;
-          color: #888;
-          margin-right: 8px;
         }
         
         .delete-btn {
