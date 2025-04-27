@@ -24,6 +24,6 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "build": "pnpm --filter @oukek/unified-ai build",
-    "example": "pnpm --filter example server dev"
+    "example": "pnpm --parallel --filter server --filter example dev"
   }
 }
