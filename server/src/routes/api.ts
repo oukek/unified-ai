@@ -3,6 +3,7 @@ import { UserController } from '../controllers/UserController';
 import { ConfigController } from '../controllers/ConfigController';
 import { ConversationController } from '../controllers/ConversationController';
 import { ToolController } from '../controllers/ToolController';
+import { McpController } from '../controllers/McpController';
 import { authenticateToken } from '../middlewares/auth';
 
 const router: Router = Router();
@@ -10,6 +11,7 @@ const userController = new UserController();
 const configController = new ConfigController();
 const conversationController = new ConversationController();
 const toolController = new ToolController();
+const mcpController = new McpController();
 
 // 认证路由
 router.post('/auth/register', userController.register);
@@ -44,6 +46,11 @@ router.post('/conversations/:conversationId/messages', authenticateToken, conver
 router.get('/tools', toolController.getAllTools); // 获取所有可用工具（无需登录）
 router.get('/user/tools', authenticateToken, toolController.getUserTools); // 获取用户启用的工具
 router.put('/user/tools', authenticateToken, toolController.updateUserTools); // 更新用户启用的工具
+
+// MCP路由
+router.get('/mcps', mcpController.getAllMcps); // 获取所有可用MCP（无需登录）
+router.get('/user/mcps', authenticateToken, mcpController.getUserMcps); // 获取用户启用的MCP
+router.put('/user/mcps', authenticateToken, mcpController.updateUserMcps); // 更新用户启用的MCP
 
 // 在这里添加更多路由
 

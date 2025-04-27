@@ -11,6 +11,7 @@ export const dbConfig: DataSourceOptions = {
   type: 'sqlite',
   database: process.env.DB_PATH || path.join(__dirname, '../database.sqlite'),
   entities: [path.join(__dirname, 'entities/**/*.{js,ts}')],
+  synchronize: true,
 };
 
 // 主配置对象

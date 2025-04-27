@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
-@Entity('user_tools')
-export class UserTools {
+@Entity('user_mcp')
+export class UserMcp {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -9,14 +9,14 @@ export class UserTools {
   userId: string;
 
   @Column({ type: 'simple-json', nullable: true })
-  enabledTools: string[]; // 存储用户启用的工具名称列表
+  enabledMcps: string[]; // 存储用户启用的MCP名称列表
 
   @Column({ type: 'simple-json', nullable: true })
-  toolConfigs: Record<string, any>; // 存储工具配置，如API密钥等
+  mcpConfigs: Record<string, any>; // 存储MCP配置，包含command、args和env等
 
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
-}
+} 
