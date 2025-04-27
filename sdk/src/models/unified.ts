@@ -376,10 +376,6 @@ export class UnifiedAI extends BaseModel {
     return { processedContent, isJsonResponse }
   }
 
-  private enhanceSystemMessage<T extends ChatOptions | undefined = undefined>(options: T, tools: AgentFunctionSchema[]) {
-    return getEnhancedSystemMessage(options, tools)
-  }
-
   private async optimizeUserQuestion(prompt: string, callback?: AgentCallback) {
     // 使用思考提示模板
     const thinkingPrompt = getThinkingPrompt(prompt)
@@ -462,7 +458,7 @@ export class UnifiedAI extends BaseModel {
       // 获取所有工具
       const tools = await this.getAllTools()
 
-      const enhancedSystemMessage = this.enhanceSystemMessage(options, tools)
+      const enhancedSystemMessage = getEnhancedSystemMessage(options, tools)
 
       // 处理系统消息和提示
       const { enhancedPrompt, enhancedOptions, systemMessage, currentModel, supportsSystemMessages }
