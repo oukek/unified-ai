@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { conversationApi } from '../api/modules/conversation'
-import { startAIStreamChat } from '../utils/socket-ai'
+import { startAIStreamChat as startSocketStreamChat } from '../utils/socket-ai'
+import { startAIStreamChat as startSSEStreamChat } from '../utils/sse-ai'
 import type { ContentBlock, FunctionCall, ChatMessage, Conversation } from '../api/types'
 
 // 扩展API消息类型，添加前端需要的临时属性
@@ -29,6 +30,9 @@ export const useChatStore = defineStore('chat', () => {
 
   // 当前活跃会话的消息列表
   const activeMessages = ref<ExtendedChatMessage[]>([])
+
+  // 是否使用SSE代替WebSocket（可以从配置或用户设置中获取）
+  const useSSE = ref(true)
 
   // 获取当前活跃会话
   const activeConversation = computed(() => {
@@ -194,7 +198,10 @@ export const useChatStore = defineStore('chat', () => {
       activeMessages.value.push(loadingMessage)
       loadingMessage = activeMessages.value[activeMessages.value.length - 1]
       
-      // 使用WebSocket进行流式聊天，不再传递mcpName参数
+      // 根据配置选择使用WebSocket或SSE
+      const startAIStreamChat = useSSE.value ? startSSEStreamChat : startSocketStreamChat
+      
+      // 使用选定的方式进行流式聊天
       await startAIStreamChat(activeConversationId.value, content, {
         onStart: () => {
           // 已经预先添加了加载状态的消息
@@ -305,7 +312,7 @@ export const useChatStore = defineStore('chat', () => {
         }
       })
       
-      // WebSocket处理完成后返回当前消息
+      // 流式处理完成后返回当前消息
       return {
         content: loadingMessage.content,
         functionCalls: loadingMessage.functionCalls,
@@ -343,13 +350,13 @@ export const useChatStore = defineStore('chat', () => {
     activeMessages,
     isLoading,
     isSending,
+    useSSE,
     initialize,
     createConversation,
     setActiveConversation,
     deleteConversation,
     updateConversationTitle,
     updateSystemMessage,
-    // 统一使用WebSocket方式
     sendMessageToAI
   }
 }) 

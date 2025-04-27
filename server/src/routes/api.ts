@@ -4,6 +4,7 @@ import { ConfigController } from '../controllers/ConfigController';
 import { ConversationController } from '../controllers/ConversationController';
 import { ToolController } from '../controllers/ToolController';
 import { McpController } from '../controllers/McpController';
+import { AIController } from '../controllers/AIController';
 import { authenticateToken } from '../middlewares/auth';
 
 const router: Router = Router();
@@ -12,6 +13,7 @@ const configController = new ConfigController();
 const conversationController = new ConversationController();
 const toolController = new ToolController();
 const mcpController = new McpController();
+const aiController = new AIController();
 
 // 认证路由
 router.post('/auth/register', userController.register);
@@ -41,6 +43,39 @@ router.delete('/conversations/:id', authenticateToken, conversationController.de
 // 消息路由
 router.get('/conversations/:conversationId/messages', authenticateToken, conversationController.getMessages);
 router.post('/conversations/:conversationId/messages', authenticateToken, conversationController.addMessage);
+
+
+// SSE 流式消息路由（POST方式，适用于长消息）
+router.post('/conversations/:conversationId/messages/stream', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { conversationId } = req.params;
+    const { content } = req.body;
+    
+    if (!content || typeof content !== 'string') {
+      res.status(400).json({ error: '消息内容不能为空' });
+      return;
+    }
+    
+    // 设置SSE所需的头部
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    
+    await aiController.handleStreamMessageSSE(userId, conversationId, content, res);
+  } catch (error: any) {
+    // 如果还没发送响应头，则发送错误JSON
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || '处理消息失败' });
+    } else {
+      // 如果已经开始SSE流，则发送错误事件
+      res.write(`event: error\n`);
+      res.write(`data: ${JSON.stringify({ error: error.message || '处理消息失败' })}\n\n`);
+      res.end();
+    }
+  }
+});
 
 // 工具路由
 router.get('/tools', toolController.getAllTools); // 获取所有可用工具（无需登录）

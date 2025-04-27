@@ -2,6 +2,7 @@ import { AIService } from '../services/AIService';
 import { ConversationRepository } from '../repositories/ConversationRepository';
 import { ChatMessageRepository } from '../repositories/ChatMessageRepository';
 import { ChatMessage } from '../entities/ChatMessage';
+import { Response } from 'express';
 
 export class AIController {
   private aiService: AIService;
@@ -170,6 +171,62 @@ export class AIController {
     } catch (error) {
       console.error('AI流式处理消息失败:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 通过SSE流式发送消息到AI
+   */
+  async handleStreamMessageSSE(
+    userId: string,
+    conversationId: string,
+    content: string,
+    res: Response,
+  ): Promise<void> {
+    try {
+      // 创建一个适配器函数，将socketCallback转换为SSE发送
+      const sseCallback = (eventType: string, data: any) => {
+        // 将数据转换为SSE格式并发送
+        res.write(`event: ${eventType}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        
+        // 如果客户端断开连接，我们需要处理
+        if (res.writableEnded) {
+          return;
+        }
+      };
+
+      // 调用现有的handleStreamMessage方法
+      const result = await this.handleStreamMessage(
+        userId,
+        conversationId,
+        content,
+        sseCallback
+      );
+
+      // 发送完成事件
+      res.write(`event: complete\n`);
+      res.write(`data: ${JSON.stringify({ 
+        messageId: result.assistantMessage.id,
+        content: result.assistantMessage.content,
+        blocks: result.assistantMessage.blocks,
+        functionCalls: result.assistantMessage.functionCalls
+      })}\n\n`);
+
+      // 结束响应
+      res.end();
+    } catch (error) {
+      console.error('AI SSE流式处理消息失败:', error);
+      
+      // 如果还没有发送响应，则发送错误
+      if (!res.headersSent) {
+        res.status(500).json({ error: '处理消息失败' });
+      } else {
+        // 如果已经开始SSE流，则发送错误事件
+        res.write(`event: error\n`);
+        res.write(`data: ${JSON.stringify({ error: '处理消息失败' })}\n\n`);
+        res.end();
+      }
     }
   }
 } 
