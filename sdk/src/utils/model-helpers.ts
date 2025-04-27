@@ -1,6 +1,7 @@
 import type { BaseModel } from '../base'
 import type { AgentFunctionSchema, ChatMessage, ChatOptions } from '../types'
 import { ChatRole } from '../types'
+import { getToolEnhancedPrompt } from './prompt'
 
 /**
  * 模型助手类
@@ -37,59 +38,8 @@ export class ModelHelpers {
       return content
     }
 
-    // 构建函数定义的JSON格式
-    const functionDefinitions = tools.map(f => ({
-      name: f.name,
-      description: f.description,
-      parameters: f.parameters,
-    }))
-
-    // 添加函数说明和规范的调用格式
-    return `${content}
-
-    You are an intelligent assistant capable of invoking tools to complete tasks efficiently.
-    You have access to the following tools.  
-    **When you determine that a task requires a tool, invoke the tool directly without asking the user for permission.**
-    
-    Below is the full list of available tools.  
-    **Only use the tool names and parameters exactly as defined below. Do not modify or create new tools.**
-    
-    ${JSON.stringify(functionDefinitions, null, 2)}
-    
-    ---
-    
-    ### 📌 Tool Invocation Format
-    
-    When invoking tools, strictly follow the format below.  
-    **Do not include any additional text, markdown, or explanations. Output only the JSON inside the tags.**
-    
-    1. Use only the tool names provided above — they must match exactly.
-    2. Provide arguments in JSON format, with correct field names and types.
-    3. If you don't need to call any tool, proceed with a normal response — do not output any JSON block.
-    
-    ### ✅ Format:
-    
-    <==start_tool_calls==>
-    {
-      "function_calls": [
-        {
-          "name": "ToolName1",
-          "arguments": {
-            "param1": "value1",
-            "param2": "value2"
-          }
-        },
-        {
-          "name": "ToolName2",
-          "arguments": {
-            "paramA": "valueA"
-          }
-        }
-      ]
-    }
-    <==end_tool_calls==>
-    
-    **Strictly follow the format above. Do not add any extra characters, explanations, or formatting.**`
+    // 使用prompt模块中的函数
+    return getToolEnhancedPrompt(content, tools)
   }
 
   /**

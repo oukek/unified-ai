@@ -35,6 +35,12 @@ export enum AgentEventType {
   RESPONSE_END = 'response_end',
   /** AI响应片段 */
   RESPONSE_CHUNK = 'response_chunk',
+  /** 思考开始 */
+  THINKING_START = 'thinking_start',
+  /** 思考片段 */
+  THINKING_CHUNK = 'thinking_chunk',
+  /** 思考结束 */
+  THINKING_END = 'thinking_end',
   /** 函数调用开始 */
   FUNCTION_CALL_START = 'function_call_start',
   /** 函数调用结束 */
@@ -75,6 +81,35 @@ export interface ResponseChunkEventData {
     isJsonResponse: boolean
     isLast: boolean
     model?: string
+  }
+}
+
+/**
+ * 思考开始事件数据
+ */
+export interface ThinkingStartEventData {
+  /** 提示内容 */
+  prompt: string
+  /** 请求选项 */
+  options?: ChatOptions
+}
+
+/**
+ * 思考结束事件数据
+ */
+export interface ThinkingEndEventData {
+  /** 思考结果 */
+  result: string
+}
+
+/**
+ * 思考块事件数据
+ */
+export interface ThinkingChunkEventData {
+  /** 思考块 */
+  chunk: {
+    content: string
+    isLast: boolean
   }
 }
 
@@ -145,6 +180,9 @@ export interface AgentEventDataMap {
   [AgentEventType.RESPONSE_START]: ResponseStartEventData
   [AgentEventType.RESPONSE_END]: ResponseEndEventData
   [AgentEventType.RESPONSE_CHUNK]: ResponseChunkEventData
+  [AgentEventType.THINKING_START]: ThinkingStartEventData
+  [AgentEventType.THINKING_CHUNK]: ThinkingChunkEventData
+  [AgentEventType.THINKING_END]: ThinkingEndEventData
   [AgentEventType.FUNCTION_CALL_START]: FunctionCallStartEventData
   [AgentEventType.FUNCTION_CALL_END]: FunctionCallEndEventData
   [AgentEventType.RECURSION_START]: RecursionStartEventData

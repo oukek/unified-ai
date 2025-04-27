@@ -1,5 +1,5 @@
-import type { AgentFunction } from '../types'
-import { ResponseFormat } from '../types'
+import type { AgentFunction, ResponseFormat } from '../types'
+import { getFunctionFollowupPrompt, getToolEnhancedPrompt } from './prompt'
 
 /**
  * 提示增强器
@@ -17,59 +17,7 @@ export class PromptEnhancer {
       return prompt
     }
 
-    // 构建函数定义的JSON格式
-    const functionDefinitions = functions.map(f => ({
-      name: f.name,
-      description: f.description,
-      parameters: f.parameters,
-    }))
-
-    // 添加函数说明和规范的调用格式
-    return `${prompt}
-
-    You are an intelligent assistant capable of invoking tools to complete tasks efficiently.
-    You have access to the following tools.  
-    **When you determine that a task requires a tool, invoke the tool directly without asking the user for permission.**
-    
-    Below is the full list of available tools.  
-    **Only use the tool names and parameters exactly as defined below. Do not modify or create new tools.**
-    
-    ${JSON.stringify(functionDefinitions, null, 2)}
-    
-    ---
-    
-    ### 📌 Tool Invocation Format
-    
-    When invoking tools, strictly follow the format below.  
-    **Do not include any additional text, markdown, or explanations. Output only the JSON inside the tags.**
-    
-    1. Use only the tool names provided above — they must match exactly.
-    2. Provide arguments in JSON format, with correct field names and types.
-    3. If you don't need to call any tool, proceed with a normal response — do not output any JSON block.
-    
-    ### ✅ Format:
-    
-    <==start_tool_calls==>
-    {
-      "function_calls": [
-        {
-          "name": "ToolName1",
-          "arguments": {
-            "param1": "value1",
-            "param2": "value2"
-          }
-        },
-        {
-          "name": "ToolName2",
-          "arguments": {
-            "paramA": "valueA"
-          }
-        }
-      ]
-    }
-    <==end_tool_calls==>
-    
-    **Strictly follow the format above. Do not add any extra characters, explanations, or formatting.**`
+    return getToolEnhancedPrompt(prompt, functions)
   }
 
   /**
@@ -86,18 +34,11 @@ export class PromptEnhancer {
     functionResultsSummary: string,
     responseFormat?: ResponseFormat,
   ): string {
-    return `
-IMPORTANT - Remember that the user's original question was: "${originalPrompt}"
-
-Your previous response was:
-${previousResponse}
-
-Here are the results of the function calls:
-${functionResultsSummary}
-
-Please generate a final response that directly answers the user's original question: "${originalPrompt}"
-If you need to call additional functions, please clearly indicate this.
-${responseFormat === ResponseFormat.JSON ? '\nReturn your response in valid JSON format.' : ''}
-`
+    return getFunctionFollowupPrompt(
+      originalPrompt,
+      previousResponse,
+      functionResultsSummary,
+      responseFormat,
+    )
   }
 }

@@ -16,6 +16,9 @@ import { AgentEventType, ResponseFormat } from '../types'
 import {
   FunctionCallExecutor,
   FunctionCallParser,
+  getEnhancedSystemMessage,
+  getMaxRecursionDepthWarning,
+  getThinkingPrompt,
   JsonHelper,
   ModelHelpers,
   PromptEnhancer,
@@ -243,8 +246,8 @@ export class UnifiedAI extends BaseModel {
       // 如果深度太大，停止递归
       if (depth >= (this.maxRecursionDepth || 25) - 1) {
         const finalResponse = {
-          content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}`,
-          isJsonResponse: false,
+          content: getMaxRecursionDepthWarning(depth, cleanContent) as any,
+          isJsonResponse: false as any,
           model: currentModel,
           functionCalls: allExecutedCalls,
           isLast: true,
@@ -374,44 +377,54 @@ export class UnifiedAI extends BaseModel {
   }
 
   private enhanceSystemMessage<T extends ChatOptions | undefined = undefined>(options: T, tools: AgentFunctionSchema[]) {
-    let systemMessage = `You are a powerful intelligent assistant that runs in applications for general-purpose users, with the goal of helping users complete their various tasks efficiently, accurately, and naturally. Your responses should be based on actual needs, such as answering directly, providing clarification, generating content, or invoking tools.
-    return the output in the language entered by the user's question, unless the user specifies another language:
-    `
-    if (tools.length > 0) {
-      systemMessage = `${systemMessage}
-You have tools at your disposal to solve the question. Follow these rules regarding tool calls:
-1. ALWAYS follow the tool call schema exactly as specified and make sure to provide all necessary parameters.
-2. The conversation may reference tools that are no longer available. NEVER call tools that are not explicitly provided.
-3. **NEVER refer to tool names when speaking to the USER.** For example, instead of saying 'I need to use the edit_file tool to edit your file', just say 'I will edit your file'.
-4. Only calls tools when they are necessary. If the USER's task is general or you already know the answer, just respond without calling tools.
-5. Before calling each tool, first explain to the USER why you are calling it.
-`
-    }
-    if (options?.systemMessage) {
-      systemMessage = `${systemMessage}
-Here is the user's system message, You should follow it when responding to the user:
-<system_message>
-${options?.systemMessage}
-</system_message>`
-    }
-    return systemMessage
+    return getEnhancedSystemMessage(options, tools)
   }
 
-  private async optimizeUserQuestion(prompt: string, _callback?: AgentCallback) {
-    const response = await this.baseModel.unifiedChat(`You are a powerful intelligent assistant that runs in applications for general-purpose users, with the goal of helping users complete their various tasks efficiently, accurately, and naturally. Your responses should be based on actual needs, such as answering directly, providing clarification, generating content, or invoking tools.
+  private async optimizeUserQuestion(prompt: string, callback?: AgentCallback) {
+    // 使用思考提示模板
+    const thinkingPrompt = getThinkingPrompt(prompt)
 
-      Here is the user's question, You should optimize it to make it more accurate and natural:
-      <user_question>
-      ${prompt}
-      </user_question>
-      return the output in the language entered by the user's question, unless the user specifies another language:
-      return the optimized question in the following JSON format:
-      {
-        "optimizedQuestion": "The optimized question"
-      }`, {
-      responseFormat: ResponseFormat.JSON,
-    })
-    return response.content.optimizedQuestion
+    // 使用流式响应来处理
+    let analysis = ''
+
+    // 通知思考开始
+    callback?.(AgentEventType.THINKING_START, { prompt, options: {} })
+
+    try {
+      // 使用流式API获取思考过程
+      for await (const chunk of this.baseModel.unifiedChatStream(thinkingPrompt, {
+        responseFormat: ResponseFormat.TEXT, // 确保是文本格式
+      })) {
+        // 获取chunk内容
+        const chunkContent = typeof chunk.content === 'object'
+          ? JSON.stringify(chunk.content)
+          : chunk.content as string
+
+        // 累积内容
+        analysis += chunkContent
+
+        // 通知每个思考块
+        callback?.(AgentEventType.THINKING_CHUNK, {
+          chunk: {
+            content: chunkContent,
+            isLast: chunk.isLast || false,
+          },
+        })
+      }
+
+      // 通知思考完成
+      callback?.(AgentEventType.THINKING_END, {
+        result: analysis,
+      })
+
+      // 返回原始问题，因为这只是思考过程
+      return prompt
+    }
+    catch (error) {
+      console.error('思考问题过程出错:', error)
+      // 出错时返回原始问题
+      return prompt
+    }
   }
 
   /**
@@ -601,7 +614,7 @@ ${options?.systemMessage}
             // 如果深度太大，停止递归
             if (depth >= (this.maxRecursionDepth || 25) - 1) {
               const finalChunk = {
-                content: `已达到最大递归深度(${depth + 1})。最终结果可能不完整。\n\n${cleanContent}` as any,
+                content: getMaxRecursionDepthWarning(depth, cleanContent) as any,
                 isJsonResponse: false as any,
                 isLast: true,
                 model: currentModel,
